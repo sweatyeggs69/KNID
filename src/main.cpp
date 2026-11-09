@@ -36,6 +36,7 @@ struct Options {
     std::string create_shortcut;  // "applications" or "desktop"
     bool remove_shortcut = false;
     bool open_settings = false;
+    std::string open_tab, state_script;
     bool mute = false, silent_audio = false;
     std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
@@ -89,7 +90,11 @@ int main(int argc, char** argv) {
         else if (a == "--select-rom") opt.select_rom = next();
         else if (a == "--create-shortcut") opt.create_shortcut = next();
         else if (a == "--remove-shortcut") { opt.create_shortcut = next(); opt.remove_shortcut = true; }
-        else if (a == "--open-settings") opt.open_settings = true;
+        else if (a == "--open-settings") {
+            opt.open_settings = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') opt.open_tab = argv[++i];
+        }
+        else if (a == "--state-script") opt.state_script = next();
         else if (a == "--mute") opt.mute = true;
         else if (a == "--silent-audio") opt.silent_audio = true;
         else if (a == "--import-save") opt.import_save = next();
@@ -156,6 +161,8 @@ int main(int argc, char** argv) {
         app.verbose = opt.verbose;
         app.frames = opt.frames;
         app.open_settings = opt.open_settings;
+        app.open_tab = opt.open_tab;
+        app.state_script = opt.state_script;
         app.input_script = opt.script;
         app.mute = opt.mute;
         app.silent_audio = opt.silent_audio;

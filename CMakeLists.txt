@@ -34,6 +34,21 @@ if(NOT MSVC)
     target_compile_options(knid_saves PRIVATE -Wall -Wextra)
 endif()
 
+# Save state slots (no SDL). Uses the system zlib when present (macOS/Linux); otherwise states
+# are stored uncompressed.
+add_library(knid_states STATIC src/app/states.cpp)
+target_include_directories(knid_states PUBLIC src)
+target_link_libraries(knid_states PUBLIC knid_gba knid_saves)
+target_compile_definitions(knid_states PRIVATE KNID_VERSION="${PROJECT_VERSION}")
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_link_libraries(knid_states PRIVATE ZLIB::ZLIB)
+    target_compile_definitions(knid_states PRIVATE KNID_HAVE_ZLIB=1)
+endif()
+if(NOT MSVC)
+    target_compile_options(knid_states PRIVATE -Wall -Wextra)
+endif()
+
 # Display post-processing (scaling layout, GBA colors, frame blending, overlays). No SDL.
 add_library(knid_display STATIC src/options/display.cpp)
 target_include_directories(knid_display PUBLIC src)
@@ -132,7 +147,7 @@ if(TARGET SDL3::SDL3)
         ${knid_font_cpp}
     )
     target_include_directories(knid_launcher PUBLIC src)
-    target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core knid_saves imgui SDL3::SDL3)
+    target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core knid_saves knid_states imgui SDL3::SDL3)
     if(NOT MSVC)
         target_compile_options(knid_launcher PRIVATE -Wall -Wextra)
     endif()

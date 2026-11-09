@@ -18,6 +18,7 @@
 #include "app/config.h"
 #include "app/platform.h"
 #include "app/save_import.h"
+#include "app/states.h"
 #include "app/theme.h"
 #include "gba/gba.h"
 #include "options/input.h"
@@ -70,6 +71,30 @@ private:
     void draw_game_tab(Config& config);
     void draw_save_section();
     void draw_shortcut_controls(bool big);
+    // Save states
+    void ensure_store();
+    SDL_Texture* thumb_texture(int slot);
+    bool save_slot(int slot);
+    bool load_slot(int slot);
+    void auto_save();
+    void show_toast(const std::string& text, int slot);
+    void draw_toast();
+    void draw_states_tab();
+    std::unique_ptr<states::Store> store_;
+    int slot_ = 1;
+    std::array<SDL_Texture*, states::kSlots + 1> thumb_tex_{};
+    std::array<std::time_t, states::kSlots + 1> thumb_at_{};
+    std::string toast_;
+    int toast_slot_ = -1;
+    Uint64 toast_until_ = 0;
+    std::string states_msg_;
+    bool states_msg_err_ = false;
+    int rename_slot_ = -1, delete_slot_ = -1, file_slot_ = 1;
+    char rename_buf_[64] = {};
+    std::optional<std::string> picked_state_import_, picked_state_export_;
+    struct StateAction { long frame; char op; int slot; };
+    std::vector<StateAction> state_script_;
+    size_t state_script_pos_ = 0;
     ShortcutPlace pending_shortcut_place_ = ShortcutPlace::Applications;
     bool confirm_shortcut_ = false;
     fs::path current_save_path();
@@ -170,12 +195,27 @@ bool App::init_window() {
     if (config_.get_string("display.fullscreen", "0") == "1") SDL_SetWindowFullscreen(window_, true);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
+    if (opt_.open_tab == "states") register_options_tab("States", [this](Config&) { draw_states_tab(); });
     register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
+    register_options_tab("States", [this](Config&) { draw_states_tab(); });
+    slot_ = std::clamp(config_.get_int("states.slot", 1), 1, states::kSlots);
+    states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) save_slot(slot_); },
+                         [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
+                         [this](int d) {
+                             slot_ = (slot_ - 1 + d + states::kSlots * 4) % states::kSlots + 1;
+                             config_.set_int("states.slot", slot_);
+                             ensure_store();
+                             const states::SlotInfo& i = store_ ? store_->info(slot_) : states::SlotInfo{};
+                             show_toast(states::slot_name(slot_) + (i.exists ? "" : " (empty)"), slot_);
+                         }});
     SDL_ShowWindow(window_);
     return true;
 }
 
 void App::shutdown() {
+    auto_save();
+    for (SDL_Texture*& t : thumb_tex_)
+        if (t) { SDL_DestroyTexture(t); t = nullptr; }
     if (game_) game_->flush_save();
     game_.reset();
     attract_.reset();
@@ -212,6 +252,7 @@ void App::accept_rom(const fs::path& path) {
     config_.set_string("rom.sha1", v.rom.sha1);
     rom_ = std::move(v);
     game_.reset();
+    store_.reset();
     screen_ = Screen::Launcher;
     start_attract();
 }
@@ -293,6 +334,7 @@ void App::set_menu_open(bool open) {
 }
 
 void App::return_to_launcher() {
+    auto_save();
     options_menu_set_open(false);
     game_paused_ = true;
     if (game_) game_->flush_save();
@@ -321,6 +363,10 @@ void App::handle_event(const SDL_Event& e) {
     if (key && e.key.key == SDLK_F1 && screen_ != Screen::FirstRun) { set_menu_open(true); return; }
     if (screen_ == Screen::Game) {
         if (controls_->handle_event(e)) return;  // gamepad hotplug / remap capture
+        if (key && e.key.key == SDLK_F5) { states::quick_save(); return; }
+        if (key && e.key.key == SDLK_F8) { states::quick_load(); return; }
+        if (key && e.key.key == SDLK_F6) { states::slot_step(-1); return; }
+        if (key && e.key.key == SDLK_F7) { states::slot_step(+1); return; }
         if (key && e.key.key == SDLK_ESCAPE) {
             if (opt_.test_pattern && !rom_.ok) { running_ = false; return; }
             set_menu_open(true);
@@ -346,6 +392,11 @@ void App::update_emulation() {
         game_->set_keys(std::uint16_t(controls_->poll() | script_keys_));
         game_->run_frame();
         ++game_frames_;
+        while (state_script_pos_ < state_script_.size() && state_script_[state_script_pos_].frame <= game_frames_) {
+            const StateAction& a = state_script_[state_script_pos_++];
+            if (a.op == 's') save_slot(a.slot);
+            else if (a.op == 'l') load_slot(a.slot);
+        }
         game_->take_audio(audio_buf_);
         pixels = game_->framebuffer();
     } else if (game_ && game_paused_) {
@@ -486,13 +537,18 @@ void App::draw_launcher() {
     }
     ImGui::Dummy(ImVec2(0, 8));
     float bw = ImGui::GetContentRegionAvail().x;
+    ensure_store();
+    bool has_auto = store_ && store_->info(states::kAutoSlot).exists && store_->info(states::kAutoSlot).error.empty();
     if (game_ && game_paused_) {
-        if (theme::big_button("Continue", ImVec2(bw, 58))) start_game();
+        if (theme::big_button("Resume", ImVec2(bw, 58))) start_game();
         if (theme::big_button("Restart", ImVec2(bw, 46), false)) {
             game_->flush_save();
             game_.reset();
             start_game();
         }
+    } else if (has_auto) {
+        if (theme::big_button("Continue", ImVec2(bw, 58))) load_slot(states::kAutoSlot);
+        if (theme::big_button("Play from the title screen", ImVec2(bw, 46), false)) start_game();
     } else {
         if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
     }
@@ -528,6 +584,265 @@ void App::draw_launcher() {
         ImGui::EndPopup();
     }
     end_card();
+}
+
+void App::ensure_store() {
+    if (store_ || !rom_.ok) return;
+    store_ = std::make_unique<states::Store>(config_.pref_dir() / "states" / rom_.rom.sha1, rom_.rom.sha1,
+                                             save_path_for(config_, rom_));
+}
+
+SDL_Texture* App::thumb_texture(int slot) {
+    ensure_store();
+    if (!store_) return nullptr;
+    const states::SlotInfo& i = store_->info(slot);
+    size_t k = size_t(slot);
+    if (!i.exists || i.thumb.empty() || !i.error.empty()) {
+        if (thumb_tex_[k]) { SDL_DestroyTexture(thumb_tex_[k]); thumb_tex_[k] = nullptr; }
+        return nullptr;
+    }
+    if (!thumb_tex_[k] || thumb_at_[k] != i.saved_at) {
+        if (!thumb_tex_[k]) {
+            thumb_tex_[k] = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STATIC, kW, kH);
+            SDL_SetTextureScaleMode(thumb_tex_[k], SDL_SCALEMODE_LINEAR);
+        }
+        SDL_UpdateTexture(thumb_tex_[k], nullptr, i.thumb.data(), kW * 2);
+        thumb_at_[k] = i.saved_at;
+    }
+    return thumb_tex_[k];
+}
+
+void App::show_toast(const std::string& text, int slot) {
+    toast_ = text;
+    toast_slot_ = slot;
+    toast_until_ = SDL_GetTicksNS() + 2500000000ull;
+}
+
+bool App::save_slot(int slot) {
+    ensure_store();
+    if (!store_ || !game_) return false;
+    std::string err;
+    bool ok = store_->save(slot, *game_, &err);
+    if (ok) show_toast("Saved to " + states::slot_name(slot), slot);
+    else show_toast(err, -1);
+    states_msg_ = ok ? "Saved to " + states::slot_name(slot) + "." : err;
+    states_msg_err_ = !ok;
+    return ok;
+}
+
+bool App::load_slot(int slot) {
+    ensure_store();
+    if (!store_) return false;
+    const states::SlotInfo& info = store_->info(slot);
+    if (!info.exists || !info.error.empty()) {
+        std::string why = info.exists ? info.error : states::slot_name(slot) + " is empty.";
+        show_toast(why, -1);
+        states_msg_ = why;
+        states_msg_err_ = true;
+        return false;
+    }
+    bool created = !game_;
+    if (created) game_ = make_gba(true);
+    std::string err;
+    if (!store_->load(slot, *game_, &err)) {
+        if (created) game_.reset();
+        show_toast(err, -1);
+        states_msg_ = err;
+        states_msg_err_ = true;
+        return false;
+    }
+    start_game();
+    presenter_->reset_history();
+    show_toast("Loaded " + states::slot_name(slot), slot);
+    states_msg_ = "Loaded " + states::slot_name(slot) + ".";
+    states_msg_err_ = false;
+    return true;
+}
+
+void App::auto_save() {
+    if (!game_ || game_frames_ < 60) return;
+    ensure_store();
+    if (store_) {
+        std::string err;
+        if (!store_->save(states::kAutoSlot, *game_, &err)) std::fprintf(stderr, "knid: auto save failed: %s\n", err.c_str());
+    }
+}
+
+void App::draw_toast() {
+    if (toast_.empty() || SDL_GetTicksNS() >= toast_until_) return;
+    const auto& c = theme::palette();
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 16, 16), ImGuiCond_Always, ImVec2(1, 0));
+    ImGui::SetNextWindowBgAlpha(0.92f);
+    ImGui::Begin("##toast", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings);
+    if (toast_slot_ >= 0) {
+        if (SDL_Texture* t = thumb_texture(toast_slot_)) {
+            ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(120, 80));
+            ImGui::SameLine();
+        }
+    }
+    ImGui::BeginGroup();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    theme::draw_star(ImGui::GetWindowDrawList(), ImVec2(p.x + 8, p.y + 11), 7, theme::u32(c.yellow));
+    ImGui::SetCursorScreenPos(ImVec2(p.x + 22, p.y));
+    ImGui::TextUnformatted(toast_.c_str());
+    ImGui::PushFont(theme::font_small());
+    ImGui::TextColored(c.text_dim, "F5 save  F8 load  F6/F7 slot (%s)", states::slot_name(slot_).c_str());
+    ImGui::PopFont();
+    ImGui::EndGroup();
+    ImGui::End();
+}
+
+void App::draw_states_tab() {
+    const auto& c = theme::palette();
+    ensure_store();
+    if (!store_) {
+        ImGui::TextUnformatted("Choose your ROM first (Game tab).");
+        return;
+    }
+    ImGui::TextWrapped("Quick keys in game: F5 save, F8 load, F6/F7 change slot. Current: %s.",
+                       states::slot_name(slot_).c_str());
+    ImGui::BeginDisabled(!store_->can_undo_load() || !game_);
+    if (ImGui::Button("Undo last load")) {
+        std::string err;
+        bool ok = store_->undo_load(*game_, &err);
+        if (ok) presenter_->reset_history();
+        states_msg_ = ok ? "Went back to before the last load." : err;
+        states_msg_err_ = !ok;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Show folder")) SDL_OpenURL(("file://" + store_->dir().string()).c_str());
+    if (!states_msg_.empty()) ImGui::TextColored(states_msg_err_ ? c.bad : c.good, "%s", states_msg_.c_str());
+    ImGui::Separator();
+
+    float avail = ImGui::GetContentRegionAvail().x;
+    int cols = std::max(1, int(avail / 230.0f));
+    float card_w = (avail - ImGui::GetStyle().ItemSpacing.x * float(cols - 1)) / float(cols);
+    float thumb_w = card_w - 20, thumb_h = thumb_w * 2.0f / 3.0f;
+    int col = 0;
+    for (int slot = 0; slot <= states::kSlots; ++slot) {
+        const states::SlotInfo& i = store_->info(slot);
+        bool usable = i.exists && i.error.empty();
+        ImGui::PushID(slot);
+        bool current = slot == slot_;
+        if (current) ImGui::PushStyleColor(ImGuiCol_Border, c.yellow);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, current ? 2.0f : 0.0f);
+        ImGui::BeginChild("##card", ImVec2(card_w, thumb_h + 150), ImGuiChildFlags_Borders);
+        ImVec2 tp = ImGui::GetCursorScreenPos();
+        if (SDL_Texture* t = thumb_texture(slot)) {
+            ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(thumb_w, thumb_h));
+        } else {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(tp, ImVec2(tp.x + thumb_w, tp.y + thumb_h), theme::u32(c.night), 10);
+            theme::draw_star(dl, ImVec2(tp.x + thumb_w / 2, tp.y + thumb_h / 2 - 8), 16, theme::u32(c.text_dim, 0.4f));
+            const char* empty = i.exists ? "Unusable" : "Empty";
+            ImVec2 ts = ImGui::CalcTextSize(empty);
+            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + thumb_h / 2 + 14), theme::u32(c.text_dim), empty);
+            ImGui::Dummy(ImVec2(thumb_w, thumb_h));
+        }
+        if (ImGui::IsItemClicked() && slot != states::kAutoSlot) {
+            slot_ = slot;
+            config_.set_int("states.slot", slot_);
+        }
+        std::string title = states::slot_name(slot) + (i.label.empty() ? "" : ": " + i.label);
+        ImGui::TextColored(current ? c.yellow : c.text, "%s", title.c_str());
+        ImGui::PushFont(theme::font_small());
+        if (usable) {
+            char when[64];
+            std::tm tm{};
+            localtime_r(&i.saved_at, &tm);
+            std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", &tm);
+            ImGui::TextColored(c.text_dim, "%s  |  played %s", when, states::format_playtime(i.playtime_frames).c_str());
+        } else {
+            ImGui::TextColored(i.exists ? c.bad : c.text_dim, "%s", i.exists ? i.error.c_str() : "No state saved yet");
+        }
+        ImGui::PopFont();
+        if (slot != states::kAutoSlot) {
+            ImGui::BeginDisabled(!game_);
+            if (ImGui::SmallButton("Save")) save_slot(slot);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+        }
+        ImGui::BeginDisabled(!usable);
+        if (ImGui::SmallButton("Load")) {
+            if (slot != states::kAutoSlot) { slot_ = slot; config_.set_int("states.slot", slot_); }
+            load_slot(slot);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::SmallButton("...")) ImGui::OpenPopup("more");
+        if (ImGui::BeginPopup("more")) {
+            if (ImGui::MenuItem("Rename...", nullptr, false, usable)) {
+                rename_slot_ = slot;
+                std::snprintf(rename_buf_, sizeof rename_buf_, "%s", i.label.c_str());
+            }
+            if (ImGui::MenuItem("Export...", nullptr, false, i.exists)) {
+                file_slot_ = slot;
+                static const SDL_DialogFileFilter f[] = {{"KNID save state", "knst"}};
+                std::string def = (rom_.path.parent_path() / ("Kirby " + states::slot_name(slot) + ".knst")).string();
+                SDL_ShowSaveFileDialog(
+                    [](void* self, const char* const* files, int) {
+                        auto* app = static_cast<App*>(self);
+                        std::lock_guard<std::mutex> lock(app->pick_mutex_);
+                        if (files && files[0]) app->picked_state_export_ = files[0];
+                    },
+                    this, window_, f, 1, def.c_str());
+            }
+            if (ImGui::MenuItem("Import into this slot...")) {
+                file_slot_ = slot;
+                static const SDL_DialogFileFilter f[] = {{"KNID save state", "knst"}, {"All files", "*"}};
+                SDL_ShowOpenFileDialog(
+                    [](void* self, const char* const* files, int) {
+                        auto* app = static_cast<App*>(self);
+                        std::lock_guard<std::mutex> lock(app->pick_mutex_);
+                        if (files && files[0]) app->picked_state_import_ = files[0];
+                    },
+                    this, window_, f, 2, nullptr, false);
+            }
+            if (ImGui::MenuItem("Delete...", nullptr, false, i.exists)) delete_slot_ = slot;
+            ImGui::EndPopup();
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        if (current) ImGui::PopStyleColor();
+        ImGui::PopID();
+        if (++col < cols) ImGui::SameLine();
+        else col = 0;
+    }
+
+    if (rename_slot_ >= 0) { ImGui::OpenPopup("Rename state"); }
+    if (ImGui::BeginPopupModal("Rename state", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Label for %s:", states::slot_name(rename_slot_).c_str());
+        ImGui::SetNextItemWidth(320);
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        bool enter = ImGui::InputText("##label", rename_buf_, sizeof rename_buf_, ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::Button("Save") || enter) {
+            std::string err;
+            if (!store_->rename(rename_slot_, rename_buf_, &err)) { states_msg_ = err; states_msg_err_ = true; }
+            rename_slot_ = -1;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) { rename_slot_ = -1; ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
+    if (delete_slot_ >= 0) { ImGui::OpenPopup("Delete state?"); }
+    if (ImGui::BeginPopupModal("Delete state?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Delete %s? It is moved to the Trash.", states::slot_name(delete_slot_).c_str());
+        if (ImGui::Button("Delete")) {
+            std::string err;
+            bool ok = store_->remove(delete_slot_, &err);
+            states_msg_ = ok ? states::slot_name(delete_slot_) + " moved to the Trash." : err;
+            states_msg_err_ = !ok;
+            delete_slot_ = -1;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) { delete_slot_ = -1; ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
 }
 
 void App::save_message(std::string text, bool error) {
@@ -824,6 +1139,16 @@ int App::run() {
         if (comma == std::string::npos) break;
         p = comma + 1;
     }
+    for (size_t p = 0; p < opt_.state_script.size();) {
+        size_t comma = opt_.state_script.find(',', p);
+        std::string item = opt_.state_script.substr(p, comma == std::string::npos ? std::string::npos : comma - p);
+        size_t colon = item.find(':');
+        if (colon != std::string::npos && colon + 2 <= item.size())
+            state_script_.push_back({std::strtol(item.c_str(), nullptr, 10), item[colon + 1],
+                                     int(std::strtol(item.c_str() + colon + 2, nullptr, 10))});
+        if (comma == std::string::npos) break;
+        p = comma + 1;
+    }
     if (!init_window()) {
         std::fprintf(stderr, "knid: could not create window: %s\n", SDL_GetError());
         return 1;
@@ -868,6 +1193,20 @@ int App::run() {
                 if (pending_save_) options_menu_set_open(true);
             }
             if (picked_export_) { export_save(*picked_export_); picked_export_.reset(); }
+            if (picked_state_export_ && store_) {
+                std::string err;
+                bool ok = store_->export_slot(file_slot_, *picked_state_export_, &err);
+                states_msg_ = ok ? "Exported " + states::slot_name(file_slot_) + "." : err;
+                states_msg_err_ = !ok;
+                picked_state_export_.reset();
+            }
+            if (picked_state_import_ && store_) {
+                std::string err;
+                bool ok = store_->import_into(file_slot_, *picked_state_import_, &err);
+                states_msg_ = ok ? "Imported into " + states::slot_name(file_slot_) + "." : err;
+                states_msg_err_ = !ok;
+                picked_state_import_.reset();
+            }
             if (picked_bios_) {
                 config_.set_string("bios.path", *picked_bios_);
                 std::string err;
@@ -928,17 +1267,30 @@ int App::run() {
         }
         menu_was_open_ = menu;
 
+        bool toast = !toast_.empty() && SDL_GetTicksNS() < toast_until_;
         if (screen_ == Screen::Game && !menu) {
-            if (!opt_.screenshot.empty() && reached_end) presenter_->capture_next(opt_.screenshot.string());
+            if (!opt_.screenshot.empty() && reached_end && !toast) presenter_->capture_next(opt_.screenshot.string());
             if (steps == 0) {
                 // No new emulated frame this refresh: show the same image again without re-blending.
                 presenter_->redraw(controls_->remap_prompt());
-                SDL_RenderPresent(renderer_);
             } else if (opt_.test_pattern || !game_) {
-                presenter_->present(pattern_.data(), controls_->remap_prompt());
+                presenter_->draw(pattern_.data(), gba::kScreenWidth, controls_->remap_prompt());
             } else {
-                presenter_->present(game_->wide_framebuffer(), game_->wide_width(), controls_->remap_prompt());
+                presenter_->draw(game_->wide_framebuffer(), game_->wide_width(), controls_->remap_prompt());
             }
+            if (toast) {  // small save-state notice with the slot's thumbnail
+                ImGui_ImplSDLRenderer3_NewFrame();
+                ImGui_ImplSDL3_NewFrame();
+                ImGui::NewFrame();
+                draw_toast();
+                ImGui::Render();
+                ImGuiIO& io = ImGui::GetIO();
+                SDL_SetRenderScale(renderer_, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
+                ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer_);
+                SDL_SetRenderScale(renderer_, 1, 1);
+                if (!opt_.screenshot.empty() && reached_end) capture_window(opt_.screenshot.string());
+            }
+            SDL_RenderPresent(renderer_);
             std::string msg = controls_->take_message();
             if (!msg.empty()) presenter_->show_message(msg);
         } else {
