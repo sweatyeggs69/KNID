@@ -85,6 +85,8 @@ std::uint32_t ra_read_memory(const gba::Gba& gba, std::uint32_t address, std::ui
 
 namespace {
 constexpr int kAchievementToastMs = 5000;
+// The server adds this pseudo-achievement when it does not accept hardcore unlocks from the client.
+constexpr std::uint32_t kWarningAchievementId = 101000001;
 
 struct Badge {
     enum State { Loading, Ready, Failed } state = Loading;
@@ -519,31 +521,16 @@ void Achievements::Impl::draw_game() {
             maybe_load_game();
     }
     if (!rc_client_is_game_loaded(client)) return;
+    // One summary line; the list below gets the rest of the height.
     const rc_client_game_t* g = rc_client_get_game_info(client);
     rc_client_user_game_summary_t sum{};
     rc_client_get_user_game_summary(client, &sum);
-    if (g && g->badge_url) {
-        if (SDL_Texture* t = badge_texture(g->badge_url)) {
-            ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(56, 56));
-            ImGui::SameLine();
-        }
-    }
-    ImGui::BeginGroup();
-    ImGui::PushFont(theme::font_button());
-    ImGui::TextUnformatted(g && g->title ? g->title : "");
-    ImGui::PopFont();
-    if (sum.num_core_achievements == 0) {
-        ImGui::TextColored(c.text_dim, "This game has no achievements yet.");
-    } else {
-        ImGui::Text("%u of %u unlocked, %u of %u points", sum.num_unlocked_achievements, sum.num_core_achievements,
-                    sum.points_unlocked, sum.points_core);
-        float frac = float(sum.num_unlocked_achievements) / float(sum.num_core_achievements);
-        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, c.yellow);
-        ImGui::ProgressBar(frac, ImVec2(320, 8), "");
-        ImGui::PopStyleColor();
-    }
-    ImGui::EndGroup();
-    ImGui::Spacing();
+    if (sum.num_core_achievements == 0)
+        ImGui::TextColored(c.text_dim, "%s has no achievements yet.", g && g->title ? g->title : "This game");
+    else
+        ImGui::TextColored(c.text_dim, "%s: %u of %u unlocked, %u of %u points", g && g->title ? g->title : "Game",
+                           sum.num_unlocked_achievements, sum.num_core_achievements, sum.points_unlocked,
+                           sum.points_core);
 
     rc_client_achievement_list_t* list = rc_client_create_achievement_list(
         client, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE, RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
@@ -551,9 +538,12 @@ void Achievements::Impl::draw_game() {
     if (ImGui::BeginChild("##ra_list", ImVec2(0, 0), ImGuiChildFlags_None)) {
         for (uint32_t bi = 0; bi < list->num_buckets; ++bi) {
             const rc_client_achievement_bucket_t& bucket = list->buckets[bi];
+            bool only_warning = bucket.num_achievements == 1 && bucket.achievements[0]->id == kWarningAchievementId;
+            if (only_warning) continue;
             ImGui::SeparatorText(bucket.label ? bucket.label : "");
             for (uint32_t i = 0; i < bucket.num_achievements; ++i) {
                 const rc_client_achievement_t* a = bucket.achievements[i];
+                if (a->id == kWarningAchievementId) continue;  // shown in Options instead
                 ImGui::PushID(int(a->id));
                 bool unlocked = a->unlocked != RC_CLIENT_ACHIEVEMENT_UNLOCKED_NONE;
                 const char* url = unlocked ? a->badge_url : a->badge_locked_url;
@@ -592,7 +582,7 @@ void Achievements::Impl::draw_tab() {
         ImGui::Spacing();
     }
     bool on = enabled();
-    if (ImGui::Checkbox("Earn achievements while playing", &on)) {
+    if (ImGui::Checkbox(login == Login::SignedIn && on ? "Achievements on" : "Earn achievements while playing", &on)) {
         config.set_bool("ra.enabled", on);
         if (on) {
             login_with_saved_token();
@@ -623,30 +613,30 @@ void Achievements::Impl::draw_tab() {
         return;
     }
 
+    // One line: account, then Options and Sign out on the right.
     const rc_client_user_t* u = rc_client_get_user_info(client);
-    if (u && u->avatar_url) {
-        if (SDL_Texture* t = badge_texture(u->avatar_url)) {
-            ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(40, 40));
-            ImGui::SameLine();
-        }
-    }
-    ImGui::BeginGroup();
-    ImGui::Text("Signed in as %s", u && u->display_name ? u->display_name : "");
-    ImGui::TextColored(c.text_dim, "%u points (%u softcore)", u ? u->score : 0, u ? u->score_softcore : 0);
-    ImGui::EndGroup();
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90);
+    ImGui::SameLine(0, 24);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(c.text_dim, "%s, %u points (%u softcore)", u && u->display_name ? u->display_name : "",
+                       u ? u->score : 0, u ? u->score_softcore : 0);
+    const ImGuiStyle& st = ImGui::GetStyle();
+    float buttons = ImGui::CalcTextSize("Options").x + ImGui::CalcTextSize("Sign out").x + st.FramePadding.x * 4 +
+                    st.ItemSpacing.x;
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons));
+    if (ImGui::Button("Options")) ImGui::OpenPopup("##ra_options");
+    ImGui::SameLine();
     if (ImGui::Button("Sign out")) {
         sign_out();
         return;
     }
     if (!login_message.empty()) ImGui::TextColored(login_message_error ? c.bad : c.text_dim, "%s", login_message.c_str());
 
-    // Options fold away so the achievement list gets the height.
-    if (ImGui::CollapsingHeader("Options")) {
+    if (ImGui::BeginPopup("##ra_options")) {
         bool hc = config.get_bool("ra.hardcore", false);
         if (ImGui::Checkbox("Hardcore mode", &hc)) {
             if (hc && rc_client_is_game_loaded(client)) {
                 confirm_hardcore = true;
+                ImGui::CloseCurrentPopup();
             } else {
                 config.set_bool("ra.hardcore", hc);
                 rc_client_set_hardcore_enabled(client, hc);
@@ -655,29 +645,32 @@ void Achievements::Impl::draw_tab() {
         ImGui::PushFont(theme::font_small());
         ImGui::TextColored(c.text_dim, "Hardcore unlocks are worth more and are marked on your profile. Loading save");
         ImGui::TextColored(c.text_dim, "states is turned off while it is on (your battery save still works).");
+        if (rc_client_get_achievement_info(client, kWarningAchievementId))
+            ImGui::TextColored(c.bad, "RetroAchievements does not accept hardcore unlocks from KNID yet.");
         ImGui::PopFont();
-        if (confirm_hardcore) {
-            ImGui::OpenPopup("Turn on hardcore?");
-            confirm_hardcore = false;
-        }
-        if (ImGui::BeginPopupModal("Turn on hardcore?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextUnformatted("The game restarts from the beginning. Your battery save is kept.");
-            if (ImGui::Button("Restart in hardcore")) {
-                config.set_bool("ra.hardcore", true);
-                rc_client_set_hardcore_enabled(client, 1);  // raises a reset event: the game restarts
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
-            ImGui::EndPopup();
-        }
-
+        ImGui::Separator();
         bool v = config.get_bool("ra.notify_unlocks", true);
         if (ImGui::Checkbox("Show a notification when an achievement unlocks", &v)) config.set_bool("ra.notify_unlocks", v);
         v = config.get_bool("ra.notify_progress", true);
         if (ImGui::Checkbox("Show progress updates", &v)) config.set_bool("ra.notify_progress", v);
         v = config.get_bool("ra.notify_leaderboards", true);
         if (ImGui::Checkbox("Show leaderboard notices", &v)) config.set_bool("ra.notify_leaderboards", v);
+        ImGui::EndPopup();
+    }
+    if (confirm_hardcore) {
+        ImGui::OpenPopup("Turn on hardcore?");
+        confirm_hardcore = false;
+    }
+    if (ImGui::BeginPopupModal("Turn on hardcore?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("The game restarts from the beginning. Your battery save is kept.");
+        if (ImGui::Button("Restart in hardcore")) {
+            config.set_bool("ra.hardcore", true);
+            rc_client_set_hardcore_enabled(client, 1);  // raises a reset event: the game restarts
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
     ImGui::Spacing();
     draw_game();
