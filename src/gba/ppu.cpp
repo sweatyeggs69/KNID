@@ -97,16 +97,21 @@ void Gba::ppu_render_text_bg(int bg, int y, u16* color, u8* opaque) {
         u32 map = screen_base + block * 0x800 + ((sy & 255) >> 3) * 64 + ((sx & 255) >> 3) * 2;
         if (map >= 0x10000) { opaque[x] = 0; continue; }
         u16 e = rd16(&vram_[map]);
-        if (bg == 2 && wide_level_.valid && (x < m || x >= m + kScreenWidth)) {
+        if (bg >= 2 && wide_level_[bg - 2].valid && (x < m || x >= m + kScreenWidth)) {
             // Outside the original view the VRAM ring holds stale columns: rebuild the
-            // entry from the level layout instead.
-            const s32 ax = s32(xx) + s32(hofs) + wide_level_.cam_x;
-            const s32 ay = s32(yy) + s32(vofs) + wide_level_.cam_y;
-            if (ax < 0 || ay < 0 || ax >= wide_level_.width * 16 || ay >= wide_level_.height * 16) {
-                opaque[x] = 0;
+            // entry from the level layout in RAM instead (wide_level.cpp).
+            const WideLevel& L = wide_level_[bg - 2];
+            s32 ax = s32(xx) + s32(hofs) + L.cam_x;
+            // The far background (BG3) is a panorama only a little wider than the view the
+            // game needs; repeat it sideways rather than show its unused edge.
+            if (bg == 3 && L.tiles_w > 0) ax = ((ax % (L.tiles_w * 8)) + L.tiles_w * 8) % (L.tiles_w * 8);
+            const s32 ay = s32(yy) + s32(vofs) + L.cam_y;
+            if (ax >= 0 && ay >= 0 && ax < L.tiles_w * 8 && ay < L.tiles_h * 8) {
+                e = wide_level_entry(bg - 2, ax >> 3, ay >> 3);
+            } else if (bg == 2) {
+                opaque[x] = 0;  // beyond the level's edge
                 continue;
             }
-            e = wide_level_entry(ax >> 3, ay >> 3);
         }
         u32 tile = e & 0x3FF, px = sx & 7, py = sy & 7;
         if (e & 0x400) px = 7 - px;

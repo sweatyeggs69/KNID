@@ -155,7 +155,9 @@ private:
     void ppu_render_text_bg(int bg, int y, u16* color, u8* opaque);
     // Widescreen level reconstruction (wide_level.cpp, specific to this game).
     void wide_level_detect();
-    u16 wide_level_entry(s32 tx, s32 ty) const;
+    u16 wide_level_entry(int layer, s32 tx, s32 ty) const;  // layer 0 = BG2, 1 = BG3
+    u16 wide_ram16(u32 a) const;
+    u32 wide_ram32(u32 a) const;
     void ppu_render_affine_bg(int bg, u16* color, u8* opaque);
     void ppu_render_bitmap(int mode, u16* color, u8* opaque);
     void ppu_render_objects(int y);
@@ -245,12 +247,15 @@ private:
     std::array<u8, kMaxLineWidth> obj_window_{};
     int wide_margin_ = 0;
     std::vector<u16> wide_frame_;  // wide_width() x kScreenHeight when wide_margin_ > 0
+    // Not emulation state: rebuilt from RAM/VRAM/IO at line 0 of every frame.
     struct WideLevel {
         bool valid = false;
         u32 map = 0;
-        s32 width = 0, height = 0;  // metatiles (16x16 px)
-        s32 cam_x = 0, cam_y = 0;   // multiple of 512/256 to add to BG2 HOFS/VOFS
-    } wide_level_;
+        s32 width = 0, height = 0;    // in the layout's own units (BG2 metatiles, BG3 tiles)
+        s32 tiles_w = 0, tiles_h = 0;  // 8x8 tiles
+        s32 cam_x = 0, cam_y = 0;      // offset to add to HOFS/VOFS for absolute level pixels
+    };
+    std::array<WideLevel, 2> wide_level_{};  // BG2, BG3
     bool frame_done_ = false;
     u64 frame_count_ = 0;
 
