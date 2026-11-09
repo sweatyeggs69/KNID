@@ -22,6 +22,7 @@ struct AppOptions {
     std::string open_tab;               // with open_settings: "states" shows the States tab first
     std::string state_script;           // "frame:s3,frame:l3" save/load slot at game frames (testing)
     long frames = -1;                   // quit after this many frames
+    int window_w = 0, window_h = 0;     // initial window size (0 = default)
     std::string input_script;           // "frame:hexkeys,..." merged with real input in game
 };
 

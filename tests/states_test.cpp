@@ -2,8 +2,11 @@
 // decision, and fallback when the Auto state is unusable. No ROM or game data needed.
 #include <cstdio>
 #include <filesystem>
+#include <memory>
+#include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "app/states.h"
 #include "gba/gba.h"
@@ -27,10 +30,25 @@ int main() {
     CHECK(choose_startup(false, false, true, true, true, false) == Startup::LauncherWithError);  // bad ROM
     CHECK(choose_startup(false, false, false, false, false, false) == Startup::Launcher);
 
+    // "Save to new slot": first empty slot after the current one, wrapping; -1 when all are full.
+    {
+        std::vector<bool> used(kSlots + 1, false);
+        CHECK(next_free_slot(used, 1) == 2);
+        used[2] = used[3] = true;
+        CHECK(next_free_slot(used, 1) == 4);
+        CHECK(next_free_slot(used, 10) == 1);
+        used[0] = true;  // Auto never counts
+        for (int s = 4; s <= kSlots; ++s) used[size_t(s)] = true;
+        CHECK(next_free_slot(used, 5) == 1);
+        used[1] = true;
+        CHECK(next_free_slot(used, 5) == -1);
+    }
+
     fs::path dir = fs::temp_directory_path() / "knid_states_test";
     fs::remove_all(dir);
     const std::string sha = "0123456789abcdef0123456789abcdef01234567";
-    knid::gba::Gba machine(std::vector<std::uint8_t>(), {});  // blank machine, nothing executed
+    auto machine_heap = std::make_unique<knid::gba::Gba>(std::vector<std::uint8_t>(), std::filesystem::path{});  // >500 KB: never on the stack
+    auto& machine = *machine_heap;  // blank machine, nothing executed
     {
         Store store(dir / "states", sha, dir / "saves" / "x.sav");
         CHECK(!store.info(kAutoSlot).exists);
@@ -40,7 +58,8 @@ int main() {
         CHECK(store.info(kAutoSlot).exists && store.info(kAutoSlot).error.empty());
         CHECK(store.info(3).label == "boss");
         CHECK(store.rename(3, "before boss", &err) && store.info(3).label == "before boss");
-        knid::gba::Gba other(std::vector<std::uint8_t>(), {});
+        auto other_heap = std::make_unique<knid::gba::Gba>(std::vector<std::uint8_t>(), std::filesystem::path{});  // >500 KB: never on the stack
+        auto& other = *other_heap;
         CHECK(store.load(kAutoSlot, other, &err));
         CHECK(store.can_undo_load());
     }
@@ -58,7 +77,8 @@ int main() {
         std::ofstream(store.file(kAutoSlot), std::ios::binary | std::ios::trunc) << "KNIDSTAT garbage";
         store.refresh();
         CHECK(store.info(kAutoSlot).exists && !store.info(kAutoSlot).error.empty());
-        knid::gba::Gba m2(std::vector<std::uint8_t>(), {});
+        auto m2_heap = std::make_unique<knid::gba::Gba>(std::vector<std::uint8_t>(), std::filesystem::path{});  // >500 KB: never on the stack
+        auto& m2 = *m2_heap;
         std::string err;
         CHECK(!store.load(kAutoSlot, m2, &err) && !err.empty());
     }

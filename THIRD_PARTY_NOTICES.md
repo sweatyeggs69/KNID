@@ -57,10 +57,17 @@ SOFTWARE.
 
 ## Fredoka font
 
-The interface font (Fredoka Medium and SemiBold), embedded in the program.
+Body text font (Fredoka Medium), embedded in the program.
 Copyright 2016 The Fredoka Project Authors (https://github.com/hafontia/Fredoka-One).
-Licensed under the SIL Open Font License, Version 1.1. The full license text is in
-`assets/fonts/OFL.txt` in the source and in the `licenses` folder of each download.
+Licensed under the SIL Open Font License, Version 1.1. Full text: `assets/fonts/Fredoka-OFL.txt`
+in the source and in the `licenses` folder of each download.
+
+## Pixelify Sans font
+
+Title and label font (Pixelify Sans Medium and SemiBold), embedded in the program.
+Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans).
+Licensed under the SIL Open Font License, Version 1.1. Full text:
+`assets/fonts/PixelifySans-OFL.txt` in the source and in the `licenses` folder of each download.
 
 ## zlib
 

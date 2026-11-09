@@ -312,9 +312,9 @@ void draw_options_menu(knid::Config& config) {
     if (!st.menu_open) return;
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    // Dim the paused game behind the menu.
+    // Dim the paused game behind the menu with the theme's modal dim color (set in theme.cpp).
     ImGui::GetBackgroundDrawList()->AddRectFilled(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
-                                                  IM_COL32(10, 6, 30, 150));
+                                                  ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
     const ImVec2 size(std::min(vp->Size.x * 0.9f, 640.0f * ImGui::GetFontSize() / 13.0f),
                       std::min(vp->Size.y * 0.9f, 560.0f * ImGui::GetFontSize() / 13.0f));
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f), ImGuiCond_Always,
