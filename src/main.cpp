@@ -35,6 +35,7 @@ struct Options {
     bool test_pattern = false, headless = false, verbose = false, play = false;
     std::string create_shortcut;  // "applications" or "desktop"
     bool open_settings = false;
+    bool mute = false;
     std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
@@ -58,6 +59,7 @@ void usage() {
         "  --dump-audio <wav> write headless audio to a WAV file\n"
         "  --input <script>   scripted input, e.g. 300:8,310:0 (game frame:hex key mask); also in --play\n"
         "  --verbose          log unimplemented BIOS calls\n"
+        "  --mute             no sound (opens no audio device; settings are not changed)\n"
         "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
         "      Backspace/Right Shift = Select (remap them in the settings menu)\n"
@@ -85,6 +87,7 @@ int main(int argc, char** argv) {
         else if (a == "--select-rom") opt.select_rom = next();
         else if (a == "--create-shortcut") opt.create_shortcut = next();
         else if (a == "--open-settings") opt.open_settings = true;
+        else if (a == "--mute") opt.mute = true;
         else if (a == "--import-save") opt.import_save = next();
         else if (a == "--export-save") opt.export_save = next();
         else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
@@ -150,6 +153,7 @@ int main(int argc, char** argv) {
         app.frames = opt.frames;
         app.open_settings = opt.open_settings;
         app.input_script = opt.script;
+        app.mute = opt.mute;
         int rc = knid::run_app(app);
         SDL_Quit();
         return rc;

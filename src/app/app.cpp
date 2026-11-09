@@ -140,7 +140,8 @@ bool App::init_window() {
     SDL_SetTextureScaleMode(frame_tex_, SDL_SCALEMODE_NEAREST);
 
     SDL_AudioSpec spec{SDL_AUDIO_S16, 2, gba::kAudioRate};
-    audio_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    if (!opt_.mute)
+        audio_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
     if (audio_) SDL_ResumeAudioStreamDevice(audio_);
 
     IMGUI_CHECKVERSION();

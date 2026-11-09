@@ -16,6 +16,7 @@ struct AppOptions {
     bool play = false;                  // --play: skip the launcher, start the configured ROM
     bool test_pattern = false;
     bool verbose = false;
+    bool mute = false;                  // open no audio device (testing)
     bool open_settings = false;         // open the settings menu at start (testing)
     long frames = -1;                   // quit after this many frames
     std::string input_script;           // "frame:hexkeys,..." merged with real input in game
