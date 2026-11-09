@@ -577,8 +577,7 @@ void App::draw_launcher() {
     ImVec2 ds = ImGui::GetIO().DisplaySize;
     begin_card("##launcher", ImVec2(std::min(560.0f, ds.x - 40), 0));
     ImGui::Dummy(ImVec2(0, 2));
-    theme::centered_text("Kirby", theme::font_title(), c.pink);
-    theme::centered_text("Nightmare in Dream Land", theme::font_body(), c.yellow);
+    theme::centered_text("KNID", theme::font_title(), c.pink);
     ImGui::Dummy(ImVec2(0, 2));
     ImGui::Dummy(ImVec2(0, 8));
     float bw = ImGui::GetContentRegionAvail().x;
