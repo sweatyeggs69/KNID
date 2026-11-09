@@ -34,6 +34,7 @@ struct Options {
     std::filesystem::path rom, bios, dump_frame, dump_audio, screenshot, pref_dir, select_rom;
     bool test_pattern = false, headless = false, verbose = false, play = false;
     std::string create_shortcut;  // "applications" or "desktop"
+    bool remove_shortcut = false;
     bool open_settings = false;
     bool mute = false, silent_audio = false;
     std::filesystem::path import_save, export_save;
@@ -48,7 +49,8 @@ void usage() {
         "  --play             start the ROM chosen in the launcher, skipping the menu\n"
         "  --pref-dir <dir>   use another settings/saves folder\n"
         "  --select-rom <f>   act as if <f> was picked in the ROM dialog (testing)\n"
-        "  --create-shortcut applications|desktop  create the --play shortcut and exit\n"
+        "  --create-shortcut applications|desktop  create or update the --play shortcut and exit\n"
+        "  --remove-shortcut applications|desktop  move KNID's shortcut to the Trash and exit\n"
         "  --import-save <f>  import a .sav/.srm from another emulator (backs up the current save)\n"
         "  --export-save <f>  write the current save as a raw 32 KiB .sav\n"
         "  --test-pattern     show the SDL test pattern instead of running the game\n"
@@ -86,6 +88,7 @@ int main(int argc, char** argv) {
         else if (a == "--pref-dir") opt.pref_dir = next();
         else if (a == "--select-rom") opt.select_rom = next();
         else if (a == "--create-shortcut") opt.create_shortcut = next();
+        else if (a == "--remove-shortcut") { opt.create_shortcut = next(); opt.remove_shortcut = true; }
         else if (a == "--open-settings") opt.open_settings = true;
         else if (a == "--mute") opt.mute = true;
         else if (a == "--silent-audio") opt.silent_audio = true;
@@ -129,7 +132,7 @@ int main(int argc, char** argv) {
 
     if (!opt.create_shortcut.empty()) {
         auto place = opt.create_shortcut == "desktop" ? knid::ShortcutPlace::Desktop : knid::ShortcutPlace::Applications;
-        knid::ShortcutResult r = knid::create_shortcut(place);
+        knid::ShortcutResult r = opt.remove_shortcut ? knid::remove_shortcut(place) : knid::create_shortcut(place);
         std::printf("%s\n", r.message.c_str());
         return r.ok ? 0 : 1;
     }

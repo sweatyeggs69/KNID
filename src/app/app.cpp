@@ -69,6 +69,9 @@ private:
     void draw_launcher();
     void draw_game_tab(Config& config);
     void draw_save_section();
+    void draw_shortcut_controls(bool big);
+    ShortcutPlace pending_shortcut_place_ = ShortcutPlace::Applications;
+    bool confirm_shortcut_ = false;
     fs::path current_save_path();
     void prepare_import(const fs::path& file);
     void apply_pending_save();
@@ -496,7 +499,9 @@ void App::draw_launcher() {
     float half = (bw - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
     if (theme::big_button("Settings", ImVec2(half, 46), false)) set_menu_open(true);
     ImGui::SameLine();
-    if (theme::big_button("Create Shortcut", ImVec2(half, 46), false)) {
+    bool has_shortcut = shortcut_state(ShortcutPlace::Applications) == ShortcutState::Ours ||
+                        shortcut_state(ShortcutPlace::Desktop) == ShortcutState::Ours;
+    if (theme::big_button(has_shortcut ? "Shortcuts..." : "Create Shortcut", ImVec2(half, 46), false)) {
         shortcut_popup_ = true;
         ImGui::OpenPopup("Create a shortcut");
     }
@@ -515,24 +520,11 @@ void App::draw_launcher() {
 
     if (ImGui::BeginPopupModal("Create a shortcut", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
-        ImGui::TextUnformatted("Add a shortcut that starts the game directly?");
+        ImGui::TextUnformatted("A shortcut starts the game directly, skipping this menu.");
         ImGui::Dummy(ImVec2(0, 4));
-        auto make = [&](ShortcutPlace place) {
-            ShortcutResult r = create_shortcut(place);
-            info_ = r.message;
-            info_until_ = ImGui::GetTime() + 10;
-            ImGui::CloseCurrentPopup();
-        };
-#if defined(__APPLE__)
-        const char* apps = "Applications folder";
-#elif defined(_WIN32)
-        const char* apps = "Start menu";
-#else
-        const char* apps = "Applications menu";
-#endif
-        if (theme::big_button(apps, ImVec2(320, 46))) make(ShortcutPlace::Applications);
-        if (theme::big_button("Desktop", ImVec2(320, 46))) make(ShortcutPlace::Desktop);
-        if (theme::big_button("Cancel", ImVec2(320, 42), false)) ImGui::CloseCurrentPopup();
+        draw_shortcut_controls(true);
+        ImGui::Dummy(ImVec2(0, 4));
+        if (theme::big_button("Done", ImVec2(360, 42), false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     end_card();
@@ -733,26 +725,68 @@ void App::draw_game_tab(Config& config) {
     ImGui::TextDisabled("Takes effect when the game is restarted.");
 
     ImGui::SeparatorText("Shortcut");
-    ImGui::TextWrapped("Add a shortcut that starts the game directly, skipping this launcher.");
+    ImGui::TextWrapped("A shortcut starts the game directly, skipping the launcher.");
+    draw_shortcut_controls(false);
+}
+
+void App::draw_shortcut_controls(bool big) {
+    const auto& c = theme::palette();
 #if defined(__APPLE__)
-    const char* apps = "Add to Applications";
+    const char* apps_name = "Applications";
 #elif defined(_WIN32)
-    const char* apps = "Add to Start menu";
+    const char* apps_name = "Start menu";
 #else
-    const char* apps = "Add to applications menu";
+    const char* apps_name = "applications menu";
 #endif
-    auto make = [&](ShortcutPlace place) {
-        ShortcutResult r = create_shortcut(place);
+    auto report = [&](const ShortcutResult& r) {
         info_ = r.message;
         info_until_ = ImGui::GetTime() + 10;
+        if (r.needs_confirm) {
+            confirm_shortcut_ = true;
+        }
     };
-    if (ImGui::Button(apps)) make(ShortcutPlace::Applications);
-    ImGui::SameLine();
-    if (ImGui::Button("Add to Desktop")) make(ShortcutPlace::Desktop);
+    for (ShortcutPlace place : {ShortcutPlace::Applications, ShortcutPlace::Desktop}) {
+        ImGui::PushID(int(place));
+        std::string where = place == ShortcutPlace::Desktop ? "Desktop" : apps_name;
+        ShortcutState st = shortcut_state(place);
+        std::string label = (st == ShortcutState::Ours ? "Update " : "Add to ") + where;
+        if (st == ShortcutState::Ours) label = "Update " + where + " shortcut";
+        bool pressed = big ? theme::big_button(label.c_str(), ImVec2(st == ShortcutState::Ours ? 250 : 360, 44))
+                           : ImGui::Button(label.c_str());
+        if (pressed) {
+            pending_shortcut_place_ = place;
+            report(create_shortcut(place));
+        }
+        if (st == ShortcutState::Ours) {
+            ImGui::SameLine();
+            bool remove = big ? theme::big_button("Remove", ImVec2(100, 44), false) : ImGui::Button("Remove shortcut");
+            if (remove) report(remove_shortcut(place));
+        }
+        ImGui::PopID();
+    }
     if (!info_.empty() && ImGui::GetTime() < info_until_) {
-        ImGui::PushTextWrapPos(0);
+        ImGui::PushTextWrapPos(big ? 360.0f : 0.0f);
         ImGui::TextColored(c.yellow, "%s", info_.c_str());
         ImGui::PopTextWrapPos();
+    }
+    if (confirm_shortcut_) {
+        ImGui::OpenPopup("Replace existing item?");
+        confirm_shortcut_ = false;
+    }
+    if (ImGui::BeginPopupModal("Replace existing item?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("%s", shortcut_path(pending_shortcut_place_).string().c_str());
+        ImGui::TextUnformatted("already exists and was not made by KNID.");
+        ImGui::TextUnformatted("Replace it? The existing item is moved to the Trash.");
+        if (ImGui::Button("Replace")) {
+            report(create_shortcut(pending_shortcut_place_, true));
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Keep it")) {
+            info_ = "Left the existing item alone.";
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }
 
