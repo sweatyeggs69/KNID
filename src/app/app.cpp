@@ -78,6 +78,8 @@ private:
     void ensure_store();
     SDL_Texture* thumb_texture(int slot);
     bool save_slot(int slot);
+    bool save_new_slot();
+    void quick_save();
     bool load_slot(int slot);
     void auto_save();
     void startup();
@@ -211,7 +213,7 @@ bool App::init_window() {
     register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
     register_options_tab("States", [this](Config&) { draw_states_tab(); });
     slot_ = std::clamp(config_.get_int("states.slot", 1), 1, states::kSlots);
-    states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) save_slot(slot_); },
+    states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) quick_save(); },
                          [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
                          [this](int d) {
                              if (!game_ || screen_ != Screen::Game) return;
@@ -221,7 +223,8 @@ bool App::init_window() {
                              const states::SlotInfo& i = store_ ? store_->info(slot_) : states::SlotInfo{};
                              show_toast("Save state slot " + std::to_string(slot_) + (i.exists ? "" : " (empty)"),
                                         i.exists ? slot_ : -1, toast::Style::Info);
-                         }});
+                         },
+                         [this] { if (game_ && screen_ == Screen::Game) save_new_slot(); }});
     SDL_ShowWindow(window_);
     return true;
 }
@@ -632,9 +635,10 @@ std::string App::hotkey_hint(bool brief) const {
         return s.empty() ? std::string("unbound") : s;
     };
     if (brief)
-        return d(input::Hotkey::SaveState) + " save  " + d(input::Hotkey::LoadState) + " load  " +
+        return d(input::Hotkey::SaveState) + " save  " + d(input::Hotkey::SaveNewSlot) + " new  " +
+               d(input::Hotkey::LoadState) + " load  " +
                d(input::Hotkey::SlotPrev) + "/" + d(input::Hotkey::SlotNext) + " slot";
-    return "save " + d(input::Hotkey::SaveState) + "; load " + d(input::Hotkey::LoadState) + "; previous slot " +
+    return "save " + d(input::Hotkey::SaveState) + "; save to new slot " + d(input::Hotkey::SaveNewSlot) + "; load " + d(input::Hotkey::LoadState) + "; previous slot " +
            d(input::Hotkey::SlotPrev) + "; next slot " + d(input::Hotkey::SlotNext);
 }
 
@@ -663,13 +667,42 @@ bool App::save_slot(int slot) {
     ensure_store();
     if (!store_ || !game_) return false;
     std::string err;
+    bool overwrote = slot != states::kAutoSlot && store_->info(slot).exists;
     bool ok = store_->save(slot, *game_, &err);
     if (ok) show_toast(slot == states::kAutoSlot ? "State saved to the Auto slot"
-                                                 : "State saved to slot " + std::to_string(slot), slot);
+                       : overwrote               ? "Slot " + std::to_string(slot) + " overwritten"
+                                                 : "State saved to slot " + std::to_string(slot),
+                       slot);
     else toast::show("Could not save the state", err, nullptr, 0, 0, 4500, toast::Style::Warning);
-    states_msg_ = ok ? "Saved to " + states::slot_name(slot) + "." : err;
+    states_msg_ = ok ? (overwrote ? "Overwrote " : "Saved to ") + states::slot_name(slot) + "." : err;
     states_msg_err_ = !ok;
     return ok;
+}
+
+// Saves into the next empty numbered slot after the current one and makes it current.
+bool App::save_new_slot() {
+    ensure_store();
+    if (!store_ || !game_) return false;
+    std::vector<bool> used(states::kSlots + 1, false);
+    for (int s = 1; s <= states::kSlots; ++s) used[size_t(s)] = store_->info(s).exists;
+    int s = states::next_free_slot(used, slot_);
+    if (s < 0) {
+        std::string why = "All " + std::to_string(states::kSlots) + " slots are full. Delete one in the States tab, " +
+                          "or save over the current slot.";
+        toast::show("No empty slot", why, nullptr, 0, 0, 4500, toast::Style::Warning);
+        states_msg_ = why;
+        states_msg_err_ = true;
+        return false;
+    }
+    slot_ = s;
+    config_.set_int("states.slot", slot_);
+    return save_slot(s);
+}
+
+// The Save state shortcut: overwrite the current slot (default) or use a new slot each time.
+void App::quick_save() {
+    if (config_.get_string("states.quick_save", "overwrite") == "new") save_new_slot();
+    else save_slot(slot_);
 }
 
 bool App::load_slot(int slot) {
@@ -767,6 +800,20 @@ void App::draw_states_tab() {
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Show folder")) SDL_OpenURL(file_url(store_->dir()).c_str());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!game_);
+    if (ImGui::Button("Save to new slot")) save_new_slot();
+    ImGui::EndDisabled();
+    {
+        int mode = config_.get_string("states.quick_save", "overwrite") == "new" ? 1 : 0;
+        const char* modes[] = {"Overwrite the current slot", "Save to a new slot each time"};
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Save state shortcut:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(300);
+        if (ImGui::Combo("##quicksave", &mode, modes, 2))
+            config_.set_string("states.quick_save", mode == 1 ? "new" : "overwrite");
+    }
     if (!states_msg_.empty()) ImGui::TextColored(states_msg_err_ ? c.bad : c.good, "%s", states_msg_.c_str());
     ImGui::Separator();
 

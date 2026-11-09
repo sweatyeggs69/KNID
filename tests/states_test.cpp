@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "app/states.h"
 #include "gba/gba.h"
@@ -28,6 +29,20 @@ int main() {
     CHECK(choose_startup(true, false, true, true, true, true) == Startup::Launcher);        // Shift bypass
     CHECK(choose_startup(false, false, true, true, true, false) == Startup::LauncherWithError);  // bad ROM
     CHECK(choose_startup(false, false, false, false, false, false) == Startup::Launcher);
+
+    // "Save to new slot": first empty slot after the current one, wrapping; -1 when all are full.
+    {
+        std::vector<bool> used(kSlots + 1, false);
+        CHECK(next_free_slot(used, 1) == 2);
+        used[2] = used[3] = true;
+        CHECK(next_free_slot(used, 1) == 4);
+        CHECK(next_free_slot(used, 10) == 1);
+        used[0] = true;  // Auto never counts
+        for (int s = 4; s <= kSlots; ++s) used[size_t(s)] = true;
+        CHECK(next_free_slot(used, 5) == 1);
+        used[1] = true;
+        CHECK(next_free_slot(used, 5) == -1);
+    }
 
     fs::path dir = fs::temp_directory_path() / "knid_states_test";
     fs::remove_all(dir);

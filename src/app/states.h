@@ -83,14 +83,31 @@ inline Startup choose_startup(bool rom_ok, bool play_flag, bool autoload, bool a
     return play_flag ? Startup::BootGame : Startup::Launcher;
 }
 
-// Hotkey actions (F5 quick save, F8 quick load, F6/F7 previous/next slot by default). The app
-// registers the handlers; input code (rebindable hotkeys) calls these.
+// The empty numbered slot that "Save to new slot" uses: the first one after `current`, wrapping
+// around 1..kSlots. used[i] says whether slot i (1-based; index 0 is Auto and ignored) holds a
+// state. Returns -1 when every numbered slot is taken.
+inline int next_free_slot(const std::vector<bool>& used, int current) {
+    for (int k = 1; k <= kSlots; ++k) {
+        int s = (current - 1 + k) % kSlots + 1;
+        if (s >= int(used.size()) || !used[size_t(s)]) return s;
+    }
+    return -1;
+}
+
+// What the Save state shortcut does (states.quick_save): overwrite the current slot, or save
+// into the next empty slot and make that the current one.
+enum class QuickSave { Overwrite, NewSlot };
+
+// Hotkey actions (F5 quick save, F9 save to new slot, F8 quick load, F6/F7 previous/next slot by
+// default). The app registers the handlers; input code (rebindable hotkeys) calls these.
 struct Hotkeys {
     std::function<void()> quick_save, quick_load;
     std::function<void(int)> slot_step;
+    std::function<void()> save_new_slot;
 };
 void set_hotkeys(Hotkeys h);
 void quick_save();
+void save_new_slot();
 void quick_load();
 void slot_step(int delta);
 

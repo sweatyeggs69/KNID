@@ -117,6 +117,7 @@ bool parse(const std::string& text, Binding& out, bool hotkey) {
 const char* name(Hotkey h) {
     switch (h) {
         case Hotkey::SaveState: return "Save state";
+        case Hotkey::SaveNewSlot: return "Save to new slot";
         case Hotkey::LoadState: return "Load state";
         case Hotkey::SlotPrev: return "Previous slot";
         case Hotkey::SlotNext: return "Next slot";
@@ -127,6 +128,7 @@ const char* name(Hotkey h) {
 const char* key_name(Hotkey h) {
     switch (h) {
         case Hotkey::SaveState: return "save_state";
+        case Hotkey::SaveNewSlot: return "save_new_slot";
         case Hotkey::LoadState: return "load_state";
         case Hotkey::SlotPrev: return "slot_prev";
         case Hotkey::SlotNext: return "slot_next";
@@ -213,6 +215,7 @@ Config default_config() {
     auto hk = [&](Hotkey h) -> std::vector<Chord>& { return c.hotkeys[int(h)]; };
     const Binding back = pad(SDL_GAMEPAD_BUTTON_BACK);
     hk(Hotkey::SaveState) = {{key(SDL_SCANCODE_F5)}, {back, pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)}};
+    hk(Hotkey::SaveNewSlot) = {{key(SDL_SCANCODE_F9)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_UP)}};
     hk(Hotkey::LoadState) = {{key(SDL_SCANCODE_F8)}, {back, pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)}};
     hk(Hotkey::SlotPrev) = {{key(SDL_SCANCODE_F6)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_LEFT)}};
     hk(Hotkey::SlotNext) = {{key(SDL_SCANCODE_F7)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)}};
@@ -454,6 +457,7 @@ void Manager::assign_hotkey(const Chord& chord) {
 void Manager::fire(Hotkey h) {
     switch (h) {
         case Hotkey::SaveState: states::quick_save(); break;
+        case Hotkey::SaveNewSlot: states::save_new_slot(); break;
         case Hotkey::LoadState: states::quick_load(); break;
         case Hotkey::SlotPrev: states::slot_step(-1); break;
         case Hotkey::SlotNext: states::slot_step(+1); break;

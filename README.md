@@ -66,7 +66,8 @@ or `sha256sum <file>` (Linux), and compare it with the line in `SHA256SUMS.txt`.
 - **Controllers.** Keyboard and gamepads work out of the box; every button can be rebound,
   including stick dead zone.
 - **Save states.** Ten slots plus an automatic one, with thumbnails, play time, labels, export
-  and import, and an "undo last load" safety net.
+  and import, and an "undo last load" safety net. Quick save can overwrite one slot over and
+  over, or start a new slot each time.
 - **Bring your saves.** Import in-game saves from RetroArch (`.srm`), mGBA, VBA-M and others, or
   export yours. Your current save is backed up first.
 - **Optional BIOS.** No BIOS file is needed. If you have your own GBA BIOS dump, KNID can use it
@@ -92,7 +93,8 @@ These are the defaults. Change them in Settings > Controls.
 | --- | --- |
 | F1 | Open or close the settings menu |
 | Esc | Open the settings menu in game (close it when open) |
-| F5 | Save state to the current slot |
+| F5 | Save state to the current slot (overwrites it) |
+| F9 | Save state to the next empty slot |
 | F8 | Load state from the current slot |
 | F6 / F7 | Previous / next save state slot |
 | F11 | Toggle fullscreen |
