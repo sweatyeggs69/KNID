@@ -21,6 +21,7 @@
 #include "app/save_import.h"
 #include "app/states.h"
 #include "app/theme.h"
+#include "app/toast.h"
 #include "gba/gba.h"
 #include "options/input.h"
 #include "options/options_panel.h"
@@ -79,16 +80,12 @@ private:
     bool load_slot(int slot);
     void auto_save();
     void play_or_resume(bool bypass);
-    void show_toast(const std::string& text, int slot);
-    void draw_toast();
+    void show_toast(const std::string& text, int slot, toast::Style style = toast::Style::Success);
     void draw_states_tab();
     std::unique_ptr<states::Store> store_;
     int slot_ = 1;
     std::array<SDL_Texture*, states::kSlots + 1> thumb_tex_{};
     std::array<std::time_t, states::kSlots + 1> thumb_at_{};
-    std::string toast_;
-    int toast_slot_ = -1;
-    Uint64 toast_until_ = 0;
     std::string states_msg_;
     bool states_msg_err_ = false;
     int rename_slot_ = -1, delete_slot_ = -1, file_slot_ = 1;
@@ -196,6 +193,7 @@ bool App::init_window() {
     ImGui_ImplSDLRenderer3_Init(renderer_);
     theme::apply(SDL_GetWindowPixelDensity(window_));
     if (config_.get_string("display.fullscreen", "0") == "1") SDL_SetWindowFullscreen(window_, true);
+    toast::set_renderer(renderer_);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
     if (opt_.open_tab == "states") register_options_tab("States", [this](Config&) { draw_states_tab(); });
@@ -209,7 +207,8 @@ bool App::init_window() {
                              config_.set_int("states.slot", slot_);
                              ensure_store();
                              const states::SlotInfo& i = store_ ? store_->info(slot_) : states::SlotInfo{};
-                             show_toast(states::slot_name(slot_) + (i.exists ? "" : " (empty)"), slot_);
+                             show_toast("Save state slot " + std::to_string(slot_) + (i.exists ? "" : " (empty)"),
+                                        i.exists ? slot_ : -1, toast::Style::Info);
                          }});
     SDL_ShowWindow(window_);
     return true;
@@ -217,6 +216,7 @@ bool App::init_window() {
 
 void App::shutdown() {
     auto_save();
+    toast::set_renderer(nullptr);
     for (SDL_Texture*& t : thumb_tex_)
         if (t) { SDL_DestroyTexture(t); t = nullptr; }
     if (game_) game_->flush_save();
@@ -621,10 +621,25 @@ SDL_Texture* App::thumb_texture(int slot) {
     return thumb_tex_[k];
 }
 
-void App::show_toast(const std::string& text, int slot) {
-    toast_ = text;
-    toast_slot_ = slot;
-    toast_until_ = SDL_GetTicksNS() + 2500000000ull;
+void App::show_toast(const std::string& text, int slot, toast::Style style) {
+    std::string body = "F5 save  F8 load  F6/F7 slot (" + states::slot_name(slot_) + ")";
+    std::vector<std::uint8_t> rgba;
+    if (slot >= 0 && store_) {
+        const states::SlotInfo& i = store_->info(slot);
+        if (!i.thumb.empty()) {
+            rgba.resize(size_t(kW) * kH * 4);
+            for (size_t p = 0; p < i.thumb.size(); ++p) {
+                std::uint16_t c = i.thumb[p];
+                auto ex = [](std::uint16_t v) { return std::uint8_t((v << 3) | (v >> 2)); };
+                rgba[p * 4 + 0] = ex(c & 31);
+                rgba[p * 4 + 1] = ex((c >> 5) & 31);
+                rgba[p * 4 + 2] = ex((c >> 10) & 31);
+                rgba[p * 4 + 3] = 255;
+            }
+        }
+    }
+    toast::show(text, body, rgba.empty() ? nullptr : rgba.data(), rgba.empty() ? 0 : kW, rgba.empty() ? 0 : kH,
+                style == toast::Style::Warning ? 4500 : 2500, style);
 }
 
 bool App::save_slot(int slot) {
@@ -632,8 +647,9 @@ bool App::save_slot(int slot) {
     if (!store_ || !game_) return false;
     std::string err;
     bool ok = store_->save(slot, *game_, &err);
-    if (ok) show_toast("Saved to " + states::slot_name(slot), slot);
-    else show_toast(err, -1);
+    if (ok) show_toast(slot == states::kAutoSlot ? "State saved to the Auto slot"
+                                                 : "State saved to slot " + std::to_string(slot), slot);
+    else toast::show("Could not save the state", err, nullptr, 0, 0, 4500, toast::Style::Warning);
     states_msg_ = ok ? "Saved to " + states::slot_name(slot) + "." : err;
     states_msg_err_ = !ok;
     return ok;
@@ -645,7 +661,7 @@ bool App::load_slot(int slot) {
     const states::SlotInfo& info = store_->info(slot);
     if (!info.exists || !info.error.empty()) {
         std::string why = info.exists ? info.error : states::slot_name(slot) + " is empty.";
-        show_toast(why, -1);
+        show_toast(why, -1, toast::Style::Warning);
         states_msg_ = why;
         states_msg_err_ = true;
         return false;
@@ -655,14 +671,16 @@ bool App::load_slot(int slot) {
     std::string err;
     if (!store_->load(slot, *game_, &err)) {
         if (created) game_.reset();
-        show_toast(err, -1);
+        toast::show("Could not load the state", err, nullptr, 0, 0, 4500, toast::Style::Warning);
         states_msg_ = err;
         states_msg_err_ = true;
         return false;
     }
     start_game();
     presenter_->reset_history();
-    show_toast("Loaded " + states::slot_name(slot), slot);
+    show_toast(slot == states::kAutoSlot ? "State loaded from the Auto slot"
+                                         : "State loaded from slot " + std::to_string(slot),
+               slot);
     states_msg_ = "Loaded " + states::slot_name(slot) + ".";
     states_msg_err_ = false;
     return true;
@@ -677,11 +695,13 @@ void App::play_or_resume(bool bypass) {
     states::StartMode mode = states::choose_start(config_.get_bool("states.autoload", false), usable, bypass);
     if (mode == states::StartMode::ResumeAuto && load_slot(states::kAutoSlot)) return;
     std::string why = auto_info && auto_info->exists && config_.get_bool("states.autoload", false) && !bypass
-                          ? (auto_info->error.empty() ? toast_ : auto_info->error)
+                          ? (auto_info->error.empty() ? states_msg_ : auto_info->error)
                           : std::string();
     game_.reset();
     start_game();
-    if (!why.empty()) show_toast("Couldn't resume (" + why + "). Starting normally.", -1);
+    if (!why.empty())
+        toast::show("Couldn't resume from the Auto state", why + " Starting normally.", nullptr, 0, 0, 4500,
+                    toast::Style::Warning);
 }
 
 void App::auto_save() {
@@ -691,32 +711,6 @@ void App::auto_save() {
         std::string err;
         if (!store_->save(states::kAutoSlot, *game_, &err)) std::fprintf(stderr, "knid: auto save failed: %s\n", err.c_str());
     }
-}
-
-void App::draw_toast() {
-    if (toast_.empty() || SDL_GetTicksNS() >= toast_until_) return;
-    const auto& c = theme::palette();
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 16, 16), ImGuiCond_Always, ImVec2(1, 0));
-    ImGui::SetNextWindowBgAlpha(0.92f);
-    ImGui::Begin("##toast", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
-                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings);
-    if (toast_slot_ >= 0) {
-        if (SDL_Texture* t = thumb_texture(toast_slot_)) {
-            ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(120, 80));
-            ImGui::SameLine();
-        }
-    }
-    ImGui::BeginGroup();
-    ImVec2 p = ImGui::GetCursorScreenPos();
-    theme::draw_star(ImGui::GetWindowDrawList(), ImVec2(p.x + 8, p.y + 11), 7, theme::u32(c.yellow));
-    ImGui::SetCursorScreenPos(ImVec2(p.x + 22, p.y));
-    ImGui::TextUnformatted(toast_.c_str());
-    ImGui::PushFont(theme::font_small());
-    ImGui::TextColored(c.text_dim, "F5 save  F8 load  F6/F7 slot (%s)", states::slot_name(slot_).c_str());
-    ImGui::PopFont();
-    ImGui::EndGroup();
-    ImGui::End();
 }
 
 void App::draw_states_tab() {
@@ -1169,6 +1163,7 @@ void App::draw_ui() {
         case Screen::Game: break;
     }
     if (options_menu_open()) draw_options_menu(config_);
+    toast::draw();
 }
 
 int App::run() {
@@ -1313,7 +1308,7 @@ int App::run() {
         }
         menu_was_open_ = menu;
 
-        bool toast = !toast_.empty() && SDL_GetTicksNS() < toast_until_;
+        bool toast = toast::active();
         if (screen_ == Screen::Game && !menu) {
             if (!opt_.screenshot.empty() && reached_end && !toast) presenter_->capture_next(opt_.screenshot.string());
             if (steps == 0) {
@@ -1328,7 +1323,7 @@ int App::run() {
                 ImGui_ImplSDLRenderer3_NewFrame();
                 ImGui_ImplSDL3_NewFrame();
                 ImGui::NewFrame();
-                draw_toast();
+                toast::draw();
                 ImGui::Render();
                 ImGuiIO& io = ImGui::GetIO();
                 SDL_SetRenderScale(renderer_, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);

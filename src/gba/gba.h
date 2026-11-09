@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,10 @@ public:
     bool load_state(const std::vector<u8>& data, std::string* error = nullptr);
 
     u64 frame_count() const { return frame_count_; }
+    // Read-only views of game memory (for achievements and tools).
+    std::span<const u8> iwram() const { return iwram_; }
+    std::span<const u8> ewram() const { return ewram_; }
+    std::span<const u8> sram() const { return sram_; }
     std::string debug_state() const;
     // Logs unimplemented BIOS calls / unusual events to stderr when true.
     bool verbose = false;

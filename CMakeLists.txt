@@ -133,7 +133,7 @@ if(TARGET SDL3::SDL3)
         src/options/input.cpp
     )
     target_include_directories(knid_options PUBLIC src)
-    target_link_libraries(knid_options PUBLIC imgui knid_display knid_app SDL3::SDL3)
+    target_link_libraries(knid_options PUBLIC imgui knid_display knid_app knid_states SDL3::SDL3)
 
     # App layer: settings, launcher UI. Uses SDL (pref path, dialogs).
     add_library(knid_app STATIC
@@ -158,6 +158,7 @@ if(TARGET SDL3::SDL3)
         src/app/app.cpp
         src/app/platform.cpp
         src/app/theme.cpp
+        src/app/toast.cpp
         ${knid_font_cpp}
     )
     target_include_directories(knid_launcher PUBLIC src)
