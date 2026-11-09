@@ -190,7 +190,7 @@ void controls_tab(input::Manager& in, Config& config) {
             if (waiting == b) ImGui::TextUnformatted("Press a key or button...  (Esc to keep)");
             else ImGui::TextWrapped("%s", in.describe(b).c_str());
             ImGui::TableNextColumn();
-            ImGui::BeginDisabled(waiting != Button::Count);
+            ImGui::BeginDisabled(in.remapping());
             if (ImGui::SmallButton("Rebind")) in.start_remap(b);
             ImGui::EndDisabled();
             ImGui::PopID();
@@ -199,12 +199,44 @@ void controls_tab(input::Manager& in, Config& config) {
     }
 
     ImGui::Spacing();
-    ImGui::BeginDisabled(waiting != Button::Count);
+    ImGui::SeparatorText("Shortcuts");
+    ImGui::TextWrapped("For a controller shortcut, hold the buttons together (up to two) and "
+                       "let go. F1, F11 and Esc are kept for the menu and fullscreen.");
+    const input::Hotkey hk_waiting = in.hotkey_remap_target();
+    if (ImGui::BeginTable("shortcuts", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                                              ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Bound to");
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < input::kHotkeyCount; ++i) {
+            const auto h = input::Hotkey(i);
+            ImGui::PushID(100 + i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(input::name(h));
+            ImGui::TableNextColumn();
+            if (hk_waiting == h) ImGui::TextUnformatted("Press a key or buttons...  (Esc to keep)");
+            else ImGui::TextWrapped("%s", in.describe(h).c_str());
+            ImGui::TableNextColumn();
+            ImGui::BeginDisabled(in.remapping());
+            if (ImGui::SmallButton("Rebind")) in.start_remap(h);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear")) in.clear(h);
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    ImGui::BeginDisabled(in.remapping());
     if (ImGui::Button("Rebind all")) in.start_remap();
     ImGui::SameLine();
     if (ImGui::Button("Reset to defaults")) in.reset_to_defaults();
     ImGui::EndDisabled();
-    if (waiting != Button::Count) {
+    if (in.remapping()) {
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) in.cancel_remap();
     }
@@ -224,6 +256,7 @@ void draw_options_panel(knid::Config& config) {
     if (st.config != &config || !st.input) {
         st.config = &config;
         st.input = std::make_unique<input::Manager>(settings_io(config));
+        st.input->set_shortcuts_enabled(false);
     }
     if (ImGui::BeginTabBar("options")) {
         for (auto& [tab_name, draw] : st.extra_tabs) {

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 
+#include "app/states.h"
+
 namespace knid::input {
 
 namespace {
@@ -24,6 +26,10 @@ std::string lower(std::string s) {
 // Keys the shell uses itself; they can never be bound to a GBA button.
 bool reserved_key(SDL_Scancode sc) {
     return sc == SDL_SCANCODE_ESCAPE || (sc >= SDL_SCANCODE_F1 && sc <= SDL_SCANCODE_F12);
+}
+// Shortcuts may use function keys, except the ones the shell keeps (F1 menu, F11 fullscreen).
+bool reserved_hotkey_key(SDL_Scancode sc) {
+    return sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_F1 || sc == SDL_SCANCODE_F11;
 }
 
 Binding key(SDL_Scancode sc) { return {Binding::Kind::Key, int(sc), 0}; }
@@ -65,7 +71,14 @@ std::string to_string(const Binding& b) {
     return "?";
 }
 
-bool from_string(const std::string& text, Binding& out) {
+namespace {
+bool parse(const std::string& text, Binding& out, bool hotkey);
+}
+
+bool from_string(const std::string& text, Binding& out) { return parse(text, out, false); }
+
+namespace {
+bool parse(const std::string& text, Binding& out, bool hotkey) {
     const std::string s = trim(text);
     auto colon = s.find(':');
     if (colon == std::string::npos) return false;
@@ -78,7 +91,7 @@ bool from_string(const std::string& text, Binding& out) {
             long n = std::strtol(value.c_str(), &end, 10);
             if (end && *end == 0 && n > 0 && n < SDL_SCANCODE_COUNT) sc = SDL_Scancode(n);
         }
-        if (sc == SDL_SCANCODE_UNKNOWN || reserved_key(sc)) return false;
+        if (sc == SDL_SCANCODE_UNKNOWN || (hotkey ? reserved_hotkey_key(sc) : reserved_key(sc))) return false;
         out = key(sc);
         return true;
     }
@@ -99,6 +112,88 @@ bool from_string(const std::string& text, Binding& out) {
     }
     return false;
 }
+}  // namespace
+
+const char* name(Hotkey h) {
+    switch (h) {
+        case Hotkey::SaveState: return "Save state";
+        case Hotkey::LoadState: return "Load state";
+        case Hotkey::SlotPrev: return "Previous slot";
+        case Hotkey::SlotNext: return "Next slot";
+        default: return "?";
+    }
+}
+
+const char* key_name(Hotkey h) {
+    switch (h) {
+        case Hotkey::SaveState: return "save_state";
+        case Hotkey::LoadState: return "load_state";
+        case Hotkey::SlotPrev: return "slot_prev";
+        case Hotkey::SlotNext: return "slot_next";
+        default: return "?";
+    }
+}
+
+std::string to_string(const Chord& c) {
+    std::string s;
+    for (const auto& b : c) {
+        if (!s.empty()) s += "+";
+        s += to_string(b);
+    }
+    return s;
+}
+
+bool chord_from_string(const std::string& text, Chord& out) {
+    // Split before each "+key:" / "+pad:" so key names containing '+' ("Keypad +") survive.
+    const std::string s = trim(text);
+    Chord c;
+    size_t p = 0;
+    while (p < s.size()) {
+        size_t next = std::string::npos;
+        for (const char* tag : {"+key:", "+pad:", "+axis:"}) {
+            size_t f = lower(s).find(tag, p + 1);
+            if (f != std::string::npos) next = std::min(next, f);
+        }
+        Binding b;
+        if (!parse(s.substr(p, next == std::string::npos ? std::string::npos : next - p), b, true)) return false;
+        if (std::find(c.begin(), c.end(), b) == c.end()) c.push_back(b);
+        if (next == std::string::npos) break;
+        p = next + 1;
+    }
+    // One key on its own, or one or two controller buttons.
+    if (c.empty() || c.size() > 2) return false;
+    for (const auto& b : c) {
+        if (b.kind == Binding::Kind::PadAxis) return false;
+        if (b.kind == Binding::Kind::Key && c.size() != 1) return false;
+    }
+    out = std::move(c);
+    return true;
+}
+
+std::string join_chords(const std::vector<Chord>& list) {
+    if (list.empty()) return "none";
+    std::string s;
+    for (const auto& c : list) {
+        if (!s.empty()) s += " | ";
+        s += to_string(c);
+    }
+    return s;
+}
+
+std::vector<Chord> split_chords(const std::string& text) {
+    std::vector<Chord> out;
+    size_t p = 0;
+    while (p <= text.size()) {
+        size_t bar = text.find(" | ", p);
+        std::string item = trim(text.substr(p, bar == std::string::npos ? std::string::npos : bar - p));
+        Chord c;
+        if (!item.empty() && chord_from_string(item, c) && std::find(out.begin(), out.end(), c) == out.end())
+            out.push_back(std::move(c));
+        if (bar == std::string::npos) break;
+        p = bar + 3;
+    }
+    return out;
+}
 
 Config default_config() {
     Config c;
@@ -114,6 +209,13 @@ Config default_config() {
     at(Button::Down) = {key(SDL_SCANCODE_DOWN), pad(SDL_GAMEPAD_BUTTON_DPAD_DOWN), axis(SDL_GAMEPAD_AXIS_LEFTY, 1)};
     at(Button::R) = {key(SDL_SCANCODE_S), pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 1)};
     at(Button::L) = {key(SDL_SCANCODE_A), pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 1)};
+    // Shortcuts: F-keys, and Back (Select) held with a shoulder or D-pad side on a controller.
+    auto hk = [&](Hotkey h) -> std::vector<Chord>& { return c.hotkeys[int(h)]; };
+    const Binding back = pad(SDL_GAMEPAD_BUTTON_BACK);
+    hk(Hotkey::SaveState) = {{key(SDL_SCANCODE_F5)}, {back, pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)}};
+    hk(Hotkey::LoadState) = {{key(SDL_SCANCODE_F8)}, {back, pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)}};
+    hk(Hotkey::SlotPrev) = {{key(SDL_SCANCODE_F6)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_LEFT)}};
+    hk(Hotkey::SlotNext) = {{key(SDL_SCANCODE_F7)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)}};
     return c;
 }
 
@@ -153,6 +255,12 @@ Config load(const SettingsIO& io) {
         if (lower(v) == "none") c.buttons[i].clear();
         else if (auto list = split(v); !list.empty()) c.buttons[i] = std::move(list);
     }
+    for (int i = 0; i < kHotkeyCount; ++i) {
+        const std::string v = trim(io.get(std::string("input.hotkey.") + key_name(Hotkey(i)), ""));
+        if (v.empty()) continue;
+        if (lower(v) == "none") c.hotkeys[i].clear();
+        else if (auto list = split_chords(v); !list.empty()) c.hotkeys[i] = std::move(list);
+    }
     return c;
 }
 
@@ -160,6 +268,8 @@ void store(const Config& c, const SettingsIO& io) {
     if (!io.set) return;
     io.set("input.deadzone", std::to_string(c.deadzone_percent));
     for (Button b : kRemapOrder) io.set(std::string("input.") + name(b), join(c.buttons[int(b)]));
+    for (int i = 0; i < kHotkeyCount; ++i)
+        io.set(std::string("input.hotkey.") + key_name(Hotkey(i)), join_chords(c.hotkeys[i]));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -172,6 +282,8 @@ Manager::Manager(SettingsIO io) : io_(std::move(io)) {
         bool complete = io_.get("input.deadzone", missing) != missing;
         for (int i = 0; complete && i < kButtonCount; ++i)
             complete = io_.get(std::string("input.") + name(Button(i)), missing) != missing;
+        for (int i = 0; complete && i < kHotkeyCount; ++i)
+            complete = io_.get(std::string("input.hotkey.") + key_name(Hotkey(i)), missing) != missing;
         if (!complete) save();
     }
     // Pads connected before this object existed already sent their ADDED events.
@@ -196,6 +308,12 @@ std::uint16_t Manager::poll() const {
     if (remapping()) return 0;
     const bool* k = SDL_GetKeyboardState(nullptr);
     const int threshold = 32767 * config_.deadzone_percent / 100;
+    // Buttons that fired a shortcut stay away from the game until every pad releases them.
+    std::erase_if(suppressed_, [&](int code) {
+        for (auto* p : pads_)
+            if (SDL_GetGamepadButton(p, SDL_GamepadButton(code))) return false;
+        return true;
+    });
     std::uint16_t mask = 0;
     for (int i = 0; i < kButtonCount; ++i) {
         bool down = false;
@@ -205,6 +323,7 @@ std::uint16_t Manager::poll() const {
             } else {
                 for (auto* p : pads_) {
                     if (b.kind == Binding::Kind::PadButton) {
+                        if (std::find(suppressed_.begin(), suppressed_.end(), b.code) != suppressed_.end()) break;
                         down = SDL_GetGamepadButton(p, SDL_GamepadButton(b.code));
                     } else {
                         const int v = SDL_GetGamepadAxis(p, SDL_GamepadAxis(b.code));
@@ -234,10 +353,28 @@ void Manager::start_remap(Button only) {
 
 Button Manager::remap_target() const { return remapping() ? kRemapOrder[remap_index_] : Button::Count; }
 
+void Manager::start_remap(Hotkey only) {
+    if (only == Hotkey::Count) return;
+    remap_index_ = -1;
+    remap_single_ = false;
+    hotkey_remap_ = only;
+    capture_.clear();
+    message_.clear();
+}
+
+void Manager::clear(Hotkey h) {
+    if (h == Hotkey::Count) return;
+    config_.hotkeys[int(h)].clear();
+    save();
+    message_ = std::string(name(h)) + " unbound";
+}
+
 void Manager::cancel_remap() {
     if (!remapping()) return;
     remap_index_ = -1;
     remap_single_ = false;
+    hotkey_remap_ = Hotkey::Count;
+    capture_.clear();
     config_ = load(io_);  // drop unsaved changes
     message_ = "Remap cancelled";
 }
@@ -261,14 +398,18 @@ void Manager::start_remap() {
 
 std::string Manager::remap_prompt() const {
     if (!remapping()) return {};
+    if (hotkey_remap_ != Hotkey::Count)
+        return std::string("Press a key or controller button(s) for ") + name(hotkey_remap_) +
+               "  (now: " + describe(hotkey_remap_) + ")";
     const Button b = kRemapOrder[remap_index_];
     return std::string("Press a key or pad button for ") + name(b) + "  (now: " + describe(b) + ")";
 }
 
 void Manager::assign(const Binding& bind) {
     const Button target = kRemapOrder[remap_index_];
-    // An input drives one GBA button only.
+    // An input drives one GBA button only, and a key is either a button or a shortcut.
     for (auto& list : config_.buttons) list.erase(std::remove(list.begin(), list.end(), bind), list.end());
+    for (auto& list : config_.hotkeys) list.erase(std::remove(list.begin(), list.end(), Chord{bind}), list.end());
     // Replace this button's bindings of the same device type (keyboard vs gamepad).
     auto& list = config_.buttons[int(target)];
     const bool is_key = bind.kind == Binding::Kind::Key;
@@ -289,8 +430,41 @@ void Manager::advance() {
     }
 }
 
+void Manager::assign_hotkey(const Chord& chord) {
+    const Hotkey target = hotkey_remap_;
+    hotkey_remap_ = Hotkey::Count;
+    capture_.clear();
+    if (target == Hotkey::Count || chord.empty()) return;
+    // A chord triggers one shortcut, and a key used for a shortcut stops driving a GBA button.
+    for (auto& list : config_.hotkeys) list.erase(std::remove(list.begin(), list.end(), chord), list.end());
+    const bool is_key = chord.front().kind == Binding::Kind::Key;
+    if (is_key)
+        for (auto& list : config_.buttons)
+            list.erase(std::remove(list.begin(), list.end(), chord.front()), list.end());
+    // Replace this shortcut's binding of the same device type, like the button rebinds do.
+    auto& list = config_.hotkeys[int(target)];
+    list.erase(std::remove_if(list.begin(), list.end(),
+                              [&](const Chord& c) { return (c.front().kind == Binding::Kind::Key) == is_key; }),
+               list.end());
+    list.insert(list.begin(), chord);
+    save();
+    message_ = std::string(name(target)) + ": " + describe(target);
+}
+
+void Manager::fire(Hotkey h) {
+    switch (h) {
+        case Hotkey::SaveState: states::quick_save(); break;
+        case Hotkey::LoadState: states::quick_load(); break;
+        case Hotkey::SlotPrev: states::slot_step(-1); break;
+        case Hotkey::SlotNext: states::slot_step(+1); break;
+        default: break;
+    }
+}
+
 void Manager::reset_to_defaults() {
     remap_index_ = -1;
+    hotkey_remap_ = Hotkey::Count;
+    capture_.clear();
     config_ = default_config();
     save();
     message_ = "Controls reset to defaults";
@@ -301,6 +475,23 @@ std::string Manager::describe(Button b) const {
     for (const auto& bind : config_.buttons[int(b)]) {
         if (!s.empty()) s += ", ";
         s += to_string(bind);
+    }
+    return s.empty() ? "none" : s;
+}
+
+std::string Manager::describe(Hotkey h) const {
+    std::string s;
+    for (const auto& c : config_.hotkeys[int(h)]) {
+        if (!s.empty()) s += ", ";
+        std::string part;
+        for (const auto& b : c) {
+            std::string t = to_string(b);
+            if (b.kind == Binding::Kind::Key) t = t.substr(4);  // "F5"
+            else if (part.empty()) t = "pad " + t.substr(4);
+            else t = t.substr(4);
+            part += (part.empty() ? "" : " + ") + t;
+        }
+        s += part;
     }
     return s.empty() ? "none" : s;
 }
@@ -333,7 +524,78 @@ bool Manager::handle_event(const SDL_Event& e) {
             return false;
         default: break;
     }
-    if (!remapping()) return false;
+    if (hotkey_remap_ != Hotkey::Count) {
+        switch (e.type) {
+            case SDL_EVENT_KEY_DOWN: {
+                if (e.key.repeat) return true;
+                const SDL_Scancode sc = e.key.scancode;
+                if (sc == SDL_SCANCODE_ESCAPE) {
+                    hotkey_remap_ = Hotkey::Count;  // keep the current binding
+                    capture_.clear();
+                } else if (!reserved_hotkey_key(sc)) {
+                    assign_hotkey({key(sc)});
+                }
+                return true;
+            }
+            case SDL_EVENT_KEY_UP:
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                return true;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+                const Binding b = pad(SDL_GamepadButton(e.gbutton.button));
+                if (capture_.size() < 2 && std::find(capture_.begin(), capture_.end(), b) == capture_.end())
+                    capture_.push_back(b);
+                return true;
+            }
+            case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                // The chord is whatever was held together before the first release.
+                if (!capture_.empty()) {
+                    for (const auto& b : capture_) suppressed_.push_back(b.code);
+                    assign_hotkey(capture_);
+                }
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    if (!remapping()) {
+        if (!shortcuts_enabled_) return false;
+        // Shortcuts. A controller chord fires when its last button goes down; the longest
+        // matching chord wins so Back+R beats a lone Back.
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+            for (int h = 0; h < kHotkeyCount; ++h)
+                for (const auto& c : config_.hotkeys[h])
+                    if (c.size() == 1 && c[0].kind == Binding::Kind::Key && c[0].code == int(e.key.scancode)) {
+                        fire(Hotkey(h));
+                        return true;
+                    }
+        } else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+            SDL_Gamepad* p = SDL_GetGamepadFromID(e.gbutton.which);
+            int best = -1;
+            const Chord* best_chord = nullptr;
+            for (int h = 0; h < kHotkeyCount && p; ++h)
+                for (const auto& c : config_.hotkeys[h]) {
+                    bool has = false, all = true;
+                    for (const auto& b : c) {
+                        if (b.kind != Binding::Kind::PadButton) { all = false; break; }
+                        if (b.code == int(e.gbutton.button)) has = true;
+                        if (!SDL_GetGamepadButton(p, SDL_GamepadButton(b.code))) all = false;
+                    }
+                    if (has && all && (!best_chord || c.size() > best_chord->size())) {
+                        best = h;
+                        best_chord = &c;
+                    }
+                }
+            if (best_chord) {
+                for (const auto& b : *best_chord)
+                    if (std::find(suppressed_.begin(), suppressed_.end(), b.code) == suppressed_.end())
+                        suppressed_.push_back(b.code);
+                fire(Hotkey(best));
+                return true;
+            }
+        }
+        return false;
+    }
 
     const int threshold = 32767 * config_.deadzone_percent / 100;
     switch (e.type) {
