@@ -141,7 +141,7 @@ struct Achievements::Impl {
 
     Impl(Config& c, SDL_Renderer* r) : config(c), renderer(r) {}
 
-    bool enabled() const { return config.get_bool("ra.enabled", true); }
+    bool enabled() const { return config.get_bool("ra.enabled", false); }  // off until the player opts in
     fs::path badge_dir() const { return config.pref_dir() / "retroachievements" / "badges"; }
 
     // ---- rc_client glue --------------------------------------------------------------------
@@ -641,41 +641,44 @@ void Achievements::Impl::draw_tab() {
     }
     if (!login_message.empty()) ImGui::TextColored(login_message_error ? c.bad : c.text_dim, "%s", login_message.c_str());
 
-    bool hc = config.get_bool("ra.hardcore", false);
-    if (ImGui::Checkbox("Hardcore mode", &hc)) {
-        if (hc && rc_client_is_game_loaded(client)) {
-            confirm_hardcore = true;
-        } else {
-            config.set_bool("ra.hardcore", hc);
-            rc_client_set_hardcore_enabled(client, hc);
+    // Options fold away so the achievement list gets the height.
+    if (ImGui::CollapsingHeader("Options")) {
+        bool hc = config.get_bool("ra.hardcore", false);
+        if (ImGui::Checkbox("Hardcore mode", &hc)) {
+            if (hc && rc_client_is_game_loaded(client)) {
+                confirm_hardcore = true;
+            } else {
+                config.set_bool("ra.hardcore", hc);
+                rc_client_set_hardcore_enabled(client, hc);
+            }
         }
-    }
-    ImGui::PushFont(theme::font_small());
-    ImGui::TextColored(c.text_dim, "Hardcore unlocks are worth more and are marked on your profile. Loading save");
-    ImGui::TextColored(c.text_dim, "states is turned off while it is on (your battery save still works).");
-    ImGui::PopFont();
-    if (confirm_hardcore) {
-        ImGui::OpenPopup("Turn on hardcore?");
-        confirm_hardcore = false;
-    }
-    if (ImGui::BeginPopupModal("Turn on hardcore?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("The game restarts from the beginning. Your battery save is kept.");
-        if (ImGui::Button("Restart in hardcore")) {
-            config.set_bool("ra.hardcore", true);
-            rc_client_set_hardcore_enabled(client, 1);  // raises a reset event: the game restarts
-            ImGui::CloseCurrentPopup();
+        ImGui::PushFont(theme::font_small());
+        ImGui::TextColored(c.text_dim, "Hardcore unlocks are worth more and are marked on your profile. Loading save");
+        ImGui::TextColored(c.text_dim, "states is turned off while it is on (your battery save still works).");
+        ImGui::PopFont();
+        if (confirm_hardcore) {
+            ImGui::OpenPopup("Turn on hardcore?");
+            confirm_hardcore = false;
         }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-    }
+        if (ImGui::BeginPopupModal("Turn on hardcore?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted("The game restarts from the beginning. Your battery save is kept.");
+            if (ImGui::Button("Restart in hardcore")) {
+                config.set_bool("ra.hardcore", true);
+                rc_client_set_hardcore_enabled(client, 1);  // raises a reset event: the game restarts
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
 
-    bool v = config.get_bool("ra.notify_unlocks", true);
-    if (ImGui::Checkbox("Show a notification when an achievement unlocks", &v)) config.set_bool("ra.notify_unlocks", v);
-    v = config.get_bool("ra.notify_progress", true);
-    if (ImGui::Checkbox("Show progress updates", &v)) config.set_bool("ra.notify_progress", v);
-    v = config.get_bool("ra.notify_leaderboards", true);
-    if (ImGui::Checkbox("Show leaderboard notices", &v)) config.set_bool("ra.notify_leaderboards", v);
+        bool v = config.get_bool("ra.notify_unlocks", true);
+        if (ImGui::Checkbox("Show a notification when an achievement unlocks", &v)) config.set_bool("ra.notify_unlocks", v);
+        v = config.get_bool("ra.notify_progress", true);
+        if (ImGui::Checkbox("Show progress updates", &v)) config.set_bool("ra.notify_progress", v);
+        v = config.get_bool("ra.notify_leaderboards", true);
+        if (ImGui::Checkbox("Show leaderboard notices", &v)) config.set_bool("ra.notify_leaderboards", v);
+    }
     ImGui::Spacing();
     draw_game();
 }

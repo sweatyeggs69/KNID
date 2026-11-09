@@ -134,10 +134,6 @@ void draw() {
                          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
         ImDrawList* dl = ImGui::GetWindowDrawList();
-        ImVec2 wp = ImGui::GetWindowPos();
-        // Accent stripe on the left edge.
-        dl->AddRectFilled(ImVec2(wp.x, wp.y + 10), ImVec2(wp.x + 4, wp.y + ImGui::GetWindowSize().y - 10),
-                          theme::u32(accent(t.style), alpha), 2.0f);
         if (t.tex) {
             float hgt = 80.0f, wdt = hgt * float(t.w) / float(t.h);
             if (wdt > 140.0f) { wdt = 140.0f; hgt = wdt * float(t.h) / float(t.w); }
