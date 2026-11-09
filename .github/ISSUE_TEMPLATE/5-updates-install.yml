@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Updates never touch your saves, settings, ROM or BIOS. Every release has a `SHA256SUMS.txt` and VirusTotal links in its [release notes](https://github.com/sweatyeggs69/KNID/releases/latest).
+        Updates never touch your saves, settings, ROM or BIOS. Every release has a `SHA256SUMS.txt` with checksums in its [release files](https://github.com/sweatyeggs69/KNID/releases/latest).
 
         **Never attach a ROM or BIOS file**, and don't post RetroAchievements passwords or tokens.
 

@@ -33,10 +33,8 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 
 ### Verify your download
 
-Every release lists a **VirusTotal** scan link for each download and a `SHA256SUMS.txt` file with
-SHA-256 checksums. See the notes of the [latest release](https://github.com/sweatyeggs69/KNID/releases/latest).
-
-[![Scanned on VirusTotal](https://img.shields.io/badge/VirusTotal-scan%20links%20in%20release%20notes-394eff)](https://github.com/sweatyeggs69/KNID/releases/latest)
+Every release includes a `SHA256SUMS.txt` file with the SHA-256 checksum of each download. See the
+[latest release](https://github.com/sweatyeggs69/KNID/releases/latest).
 
 ## Getting started
 
@@ -133,8 +131,6 @@ Never commit ROMs, BIOS files, saves, states or screenshots of the game.
   names (`KNID-<version>-macOS.dmg`, `KNID-<version>-Windows-x64.exe`,
   `KNID-<version>-Linux-x64.AppImage`, `SHA256SUMS.txt`, plus `recomplauncher.json` when the repository
   has it); the in-app updater looks for them.
-- **VirusTotal links:** add a repository secret `VT_API_KEY` (free VirusTotal account, Profile >
-  API key) under Settings > Secrets and variables > Actions.
 
 </details>
 
