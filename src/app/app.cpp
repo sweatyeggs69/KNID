@@ -14,6 +14,7 @@
 #include <optional>
 #include <vector>
 
+#include "app/achievements.h"
 #include "app/bmp.h"
 #include "app/config.h"
 #include "app/fsutil.h"
@@ -118,6 +119,7 @@ private:
     SDL_AudioStream* audio_ = nullptr;
     std::unique_ptr<Presenter> presenter_;           // in-game video (display.* options)
     std::unique_ptr<input::Manager> controls_;       // keyboard/gamepad (input.* options)
+    std::unique_ptr<Achievements> achievements_;     // RetroAchievements (ra.* options)
 
     Screen screen_ = Screen::FirstRun;
     VerifiedRom rom_;
@@ -197,9 +199,20 @@ bool App::init_window() {
     toast::set_renderer(renderer_);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
+    achievements_ = std::make_unique<Achievements>(config_, renderer_);
+    if (opt_.open_tab == "achievements")
+        register_options_tab("Achievements", [this](Config&) { achievements_->draw_tab(); });
     if (opt_.open_tab == "states") register_options_tab("States", [this](Config&) { draw_states_tab(); });
     register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
     register_options_tab("States", [this](Config&) { draw_states_tab(); });
+    achievements_->set_restart_handler([this] {
+        if (!game_) return;
+        game_->flush_save();
+        game_.reset();
+        game_ = make_gba(true);
+        presenter_->reset_history();
+    });
+    register_options_tab("Achievements", [this](Config&) { achievements_->draw_tab(); });
     slot_ = std::clamp(config_.get_int("states.slot", 1), 1, states::kSlots);
     states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) save_slot(slot_); },
                          [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
@@ -218,6 +231,7 @@ bool App::init_window() {
 
 void App::shutdown() {
     auto_save();
+    achievements_.reset();  // sends unlocks still in flight
     toast::set_renderer(nullptr);
     for (SDL_Texture*& t : thumb_tex_)
         if (t) { SDL_DestroyTexture(t); t = nullptr; }
@@ -312,6 +326,7 @@ std::unique_ptr<gba::Gba> App::make_gba(bool with_save) {
         info_ = err;
         info_until_ = ImGui::GetTime() + 6;
     }
+    if (with_save && achievements_) achievements_->game_started(*g, rom_.rom.data);
     return g;
 }
 
@@ -394,6 +409,7 @@ void App::update_emulation() {
             script_keys_ = script_[script_pos_++].second;
         game_->set_keys(std::uint16_t(controls_->poll() | script_keys_));
         game_->run_frame();
+        if (achievements_) achievements_->frame(*game_);
         ++game_frames_;
         while (state_script_pos_ < state_script_.size() && state_script_[state_script_pos_].frame <= game_frames_) {
             const StateAction& a = state_script_[state_script_pos_++];
@@ -666,6 +682,12 @@ bool App::save_slot(int slot) {
 bool App::load_slot(int slot) {
     ensure_store();
     if (!store_) return false;
+    if (std::string why; achievements_ && !achievements_->can_load_state(&why)) {
+        show_toast(why, -1, toast::Style::Warning);
+        states_msg_ = why;
+        states_msg_err_ = true;
+        return false;
+    }
     const states::SlotInfo& info = store_->info(slot);
     if (!info.exists || !info.error.empty()) {
         std::string why = info.exists ? info.error : states::slot_name(slot) + " is empty.";
@@ -686,6 +708,7 @@ bool App::load_slot(int slot) {
     }
     start_game();
     presenter_->reset_history();
+    if (achievements_) achievements_->state_loaded();
     show_toast(slot == states::kAutoSlot ? "State loaded from the Auto slot"
                                          : "State loaded from slot " + std::to_string(slot),
                slot);
@@ -747,11 +770,12 @@ void App::draw_states_tab() {
     }
     ImGui::TextWrapped("Shortcuts in game: %s. Current: %s. Change them in Controls.", hotkey_hint(false).c_str(),
                        states::slot_name(slot_).c_str());
-    ImGui::BeginDisabled(!store_->can_undo_load() || !game_);
+    ImGui::BeginDisabled(!store_->can_undo_load() || !game_ || (achievements_ && achievements_->hardcore()));
     if (ImGui::Button("Undo last load")) {
         std::string err;
         bool ok = store_->undo_load(*game_, &err);
         if (ok) presenter_->reset_history();
+        if (ok && achievements_) achievements_->state_loaded();
         states_msg_ = ok ? "Went back to before the last load." : err;
         states_msg_err_ = !ok;
     }
@@ -1321,6 +1345,7 @@ int App::run() {
             if (opt_.frames >= 0 && frames_ >= opt_.frames) { reached_end = true; break; }
         }
         update_audio_rate();
+        if (achievements_) achievements_->idle();  // network replies, pings, toasts
 
         bool menu = options_menu_open();
         if (menu_was_open_ && !menu) {  // apply what changed in the settings menu
