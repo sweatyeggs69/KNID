@@ -207,5 +207,6 @@ still published, just without the scan links.
 ## License
 
 KNID's source code is released under the [MIT License](LICENSE). Bundled open-source components
-are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Fredoka font is licensed
-under the [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Fredoka and
+Pixelify Sans fonts are licensed under the SIL Open Font License 1.1
+([Fredoka](assets/fonts/Fredoka-OFL.txt), [Pixelify Sans](assets/fonts/PixelifySans-OFL.txt)).

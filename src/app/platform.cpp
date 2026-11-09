@@ -6,6 +6,7 @@
 
 #include "app/config.h"
 #include "app/fsutil.h"
+#include "app/icon_art.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -312,6 +313,14 @@ ShortcutResult create_shortcut(ShortcutPlace place, bool replace_foreign) {
     }
 #else
     fs::create_directories(target.parent_path(), ec);
+    // Icon for the menu entry (same art as the app).
+    {
+        fs::path icons = home_dir() / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps";
+        fs::create_directories(icons, ec);
+        auto png = icon::encode_png(256, 256, icon::render_rgba(256));
+        std::ofstream ic(icons / "knid.png", std::ios::binary | std::ios::trunc);
+        ic.write(reinterpret_cast<const char*>(png.data()), std::streamsize(png.size()));
+    }
     // Inside an AppImage the executable lives in a temporary mount; point at the AppImage file.
     fs::path launch = exe;
     if (const char* appimage = std::getenv("APPIMAGE"); appimage && *appimage) launch = utf8_path(appimage);

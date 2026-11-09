@@ -115,10 +115,11 @@ void Presenter::draw_text_lines(const std::vector<std::string>& lines, bool top)
 
     SDL_SetRenderScale(renderer_, scale, scale);
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer_, 20, 12, 40, 200);  // night purple
+    // Theme colors (theme.h), repeated here because the presenter has no ImGui dependency.
+    SDL_SetRenderDrawColor(renderer_, 0x3B, 0x2A, 0x4A, 220);  // dark plum
     const SDL_FRect box{x, y, box_w, box_h};
     SDL_RenderFillRect(renderer_, &box);
-    SDL_SetRenderDrawColor(renderer_, 255, 214, 92, 255);  // star yellow
+    SDL_SetRenderDrawColor(renderer_, 0xFF, 0xD9, 0x5A, 255);  // star yellow
     for (size_t i = 0; i < lines.size(); ++i)
         SDL_RenderDebugText(renderer_, x + pad, y + pad + float(i) * line_h, lines[i].c_str());
     SDL_SetRenderScale(renderer_, 1.0f, 1.0f);

@@ -24,7 +24,8 @@ option(KNID_PACKAGE "Add packaging targets (Windows zip, Linux AppDir install)" 
 
 # App icon renderer (original procedural artwork); used for the macOS .icns, Windows .ico and
 # the Linux icon.
-add_executable(knid_icon tools/knid_icon/main.cpp)
+add_executable(knid_icon tools/knid_icon/main.cpp src/app/icon_art.cpp)
+target_include_directories(knid_icon PRIVATE src)
 
 # Core: ROM loading and verification. No SDL dependency, so it can be tested headless.
 add_library(knid_core STATIC
@@ -142,16 +143,17 @@ if(TARGET SDL3::SDL3)
     target_include_directories(knid_app PUBLIC src)
     target_link_libraries(knid_app PUBLIC SDL3::SDL3)
 
-    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. The Fredoka font
-    # (SIL OFL, assets/fonts) is compiled in.
+    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. Fonts (SIL OFL, see
+    # assets/fonts): Fredoka for text, Pixelify Sans for titles and labels; compiled in.
     set(knid_font_cpp "")
-    foreach(weight Medium SemiBold)
-        set(out "${CMAKE_CURRENT_BINARY_DIR}/font_fredoka_${weight}.cpp")
+    foreach(font Fredoka-Medium PixelifySans-Medium PixelifySans-SemiBold)
+        string(REPLACE "-" "_" sym "knid_font_${font}")
+        set(out "${CMAKE_CURRENT_BINARY_DIR}/${sym}.cpp")
         add_custom_command(OUTPUT "${out}"
-            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-${weight}.ttf
-                    -DOUTPUT=${out} -DSYMBOL=knid_font_fredoka_${weight} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
-            DEPENDS assets/fonts/Fredoka-${weight}.ttf cmake/embed.cmake
-            COMMENT "Embedding Fredoka ${weight}")
+            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/${font}.ttf
+                    -DOUTPUT=${out} -DSYMBOL=${sym} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+            DEPENDS assets/fonts/${font}.ttf cmake/embed.cmake
+            COMMENT "Embedding ${font}")
         list(APPEND knid_font_cpp "${out}")
     endforeach()
     add_library(knid_launcher STATIC
@@ -159,6 +161,7 @@ if(TARGET SDL3::SDL3)
         src/app/platform.cpp
         src/app/theme.cpp
         src/app/toast.cpp
+        src/app/icon_art.cpp
         ${knid_font_cpp}
     )
     target_include_directories(knid_launcher PUBLIC src)
@@ -194,7 +197,8 @@ if(TARGET SDL3::SDL3)
             COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/packaging/README-Windows.txt" "${stage}/Read Me.txt"
             COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/LICENSE" "${stage}/LICENSE.txt"
             COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${stage}/"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/OFL.txt" "${stage}/licenses/Fredoka-OFL.txt"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-OFL.txt" "${stage}/licenses/"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/PixelifySans-OFL.txt" "${stage}/licenses/"
             COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_CURRENT_BINARY_DIR}/zip-stage" "${CMAKE_COMMAND}" -E tar cf "${zip}" --format=zip KNID
             DEPENDS knid
             COMMENT "Building ${zip}"
@@ -212,7 +216,7 @@ if(TARGET SDL3::SDL3)
         install(FILES packaging/linux/knid.desktop DESTINATION share/applications)
         install(FILES "${knid_png}" DESTINATION share/icons/hicolor/256x256/apps)
         install(FILES LICENSE THIRD_PARTY_NOTICES.md packaging/README-Linux.txt DESTINATION share/doc/knid)
-        install(FILES assets/fonts/OFL.txt DESTINATION share/doc/knid RENAME Fredoka-OFL.txt)
+        install(FILES assets/fonts/Fredoka-OFL.txt assets/fonts/PixelifySans-OFL.txt DESTINATION share/doc/knid)
     endif()
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")

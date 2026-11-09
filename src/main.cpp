@@ -45,6 +45,7 @@ struct Options {
     bool open_settings = false;
     std::string open_tab, state_script;
     bool mute = false, silent_audio = false;
+    int window_w = 0, window_h = 0;
     std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
@@ -70,6 +71,7 @@ void usage() {
         "  --input <script>   scripted input, e.g. 300:8,310:0 (game frame:hex key mask); also in --play\n"
         "  --verbose          log unimplemented BIOS calls\n"
         "  --console          (Windows) open a console window for log output\n"
+        "  --window WxH       initial window size, e.g. 1280x800\n"
         "  --mute             no sound (opens no audio device; settings are not changed)\n"
         "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
@@ -123,6 +125,7 @@ int main(int argc, char** argv) {
         }
         else if (a == "--state-script") opt.state_script = next();
         else if (a == "--mute") opt.mute = true;
+        else if (a == "--window") std::sscanf(next().c_str(), "%dx%d", &opt.window_w, &opt.window_h);
         else if (a == "--silent-audio") opt.silent_audio = true;
         else if (a == "--import-save") opt.import_save = next_path();
         else if (a == "--export-save") opt.export_save = next_path();
@@ -192,6 +195,8 @@ int main(int argc, char** argv) {
         app.state_script = opt.state_script;
         app.input_script = opt.script;
         app.mute = opt.mute;
+        app.window_w = opt.window_w;
+        app.window_h = opt.window_h;
         app.silent_audio = opt.silent_audio;
         int rc = knid::run_app(app);
         SDL_Quit();
