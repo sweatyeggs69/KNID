@@ -105,6 +105,16 @@ private:
     bool shortcut_popup_ = false;
     double game_started_at_ = 0;
     bool menu_was_open_ = false;
+
+    // Frame pacing: with vsync on a ~60 Hz display one emulated frame per refresh; otherwise a
+    // time accumulator; without vsync, sleep-based pacing.
+    bool vsync_ = false;
+    double refresh_hz_ = 0;
+    bool lockstep_ = false;  // one emulated frame per refresh
+    double audio_fill_avg_ = -1;
+    Uint64 audio_log_at_ = 0;
+    void update_refresh_rate();
+    void update_audio_rate();
     std::vector<std::pair<long, std::uint16_t>> script_;  // --input, in game frames
     size_t script_pos_ = 0;
     std::uint16_t script_keys_ = 0;
@@ -136,6 +146,8 @@ bool App::init_window() {
     SDL_SetWindowMinimumSize(window_, 720, 480);
     renderer_ = SDL_CreateRenderer(window_, nullptr);
     if (!renderer_) return false;
+    vsync_ = SDL_SetRenderVSync(renderer_, 1);
+    update_refresh_rate();
     frame_tex_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, kW, kH);
     SDL_SetTextureScaleMode(frame_tex_, SDL_SCALEMODE_NEAREST);
 
@@ -287,6 +299,8 @@ void App::return_to_launcher() {
 
 void App::handle_event(const SDL_Event& e) {
     if (e.type == SDL_EVENT_QUIT) { running_ = false; return; }
+    if (e.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED || e.type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED)
+        update_refresh_rate();
     bool key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat;
     if (key && e.key.key == SDLK_F11) {
         bool fs_on = !(SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN);
@@ -340,9 +354,47 @@ void App::update_emulation() {
         pixels = attract_->framebuffer();
     }
     if (pixels) SDL_UpdateTexture(frame_tex_, nullptr, pixels, kW * sizeof(std::uint16_t));
-    if (audio_ && !audio_buf_.empty() && SDL_GetAudioStreamQueued(audio_) < gba::kAudioRate / 10 * 4) {
-        SDL_SetAudioStreamGain(audio_, screen_ == Screen::Game ? 1.0f : 0.35f);
+    // Safety cap (~200 ms queued); normal sync comes from update_audio_rate().
+    if (audio_ && !audio_buf_.empty() && SDL_GetAudioStreamQueued(audio_) < gba::kAudioRate / 5 * 4) {
+        SDL_SetAudioStreamGain(audio_, opt_.silent_audio ? 0.0f : screen_ == Screen::Game ? 1.0f : 0.35f);
         SDL_PutAudioStreamData(audio_, audio_buf_.data(), int(audio_buf_.size() * sizeof(std::int16_t)));
+    }
+}
+
+void App::update_refresh_rate() {
+    refresh_hz_ = 0;
+    if (const SDL_DisplayMode* m = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_))) {
+        if (m->refresh_rate_numerator > 0 && m->refresh_rate_denominator > 0)
+            refresh_hz_ = double(m->refresh_rate_numerator) / m->refresh_rate_denominator;
+        else
+            refresh_hz_ = m->refresh_rate;
+    }
+    const double gba_hz = 1.0 / kFrameSeconds;  // 59.7275
+    lockstep_ = vsync_ && refresh_hz_ > 0 && std::fabs(refresh_hz_ / gba_hz - 1.0) < 0.015;
+    if (opt_.verbose)
+        std::fprintf(stderr, "knid: vsync %s, display %.3f Hz, %s\n", vsync_ ? "on" : "off", refresh_hz_,
+                     lockstep_ ? "one frame per refresh" : vsync_ ? "accumulator pacing" : "timer pacing");
+}
+
+// Dynamic rate control: the game makes 32768 Hz audio per emulated frame. In lockstep the game runs
+// at the display rate, so play the audio faster/slower by that ratio, plus at most +/-0.5% to keep
+// about 3 frames of audio queued (no underruns, no growing latency).
+void App::update_audio_rate() {
+    if (!audio_) return;
+    const double frame_bytes = gba::kAudioRate * kFrameSeconds * 4;  // stereo s16
+    double fill = double(SDL_GetAudioStreamQueued(audio_)) / frame_bytes;  // in emulated frames
+    audio_fill_avg_ = audio_fill_avg_ < 0 ? fill : audio_fill_avg_ * 0.95 + fill * 0.05;
+    const double target = 3.0;
+    double base = lockstep_ ? refresh_hz_ * kFrameSeconds : 1.0;
+    double err = std::clamp((audio_fill_avg_ - target) / target, -1.0, 1.0);
+    double ratio = base * (1.0 + 0.005 * err);
+    SDL_SetAudioStreamFrequencyRatio(audio_, float(ratio));
+    if (opt_.verbose) {
+        Uint64 now = SDL_GetTicksNS();
+        if (now >= audio_log_at_) {
+            std::fprintf(stderr, "knid: audio queue %.2f frames (avg %.2f), rate ratio %.5f\n", fill, audio_fill_avg_, ratio);
+            audio_log_at_ = now + 1000000000ull;
+        }
     }
 }
 
@@ -767,6 +819,8 @@ int App::run() {
     }
 
     Uint64 next = SDL_GetTicksNS();
+    Uint64 last = next, acc = 0;
+    double lock_acc = 0;
     const Uint64 frame_ns = Uint64(kFrameSeconds * 1e9);
     while (running_) {
         SDL_Event e;
@@ -794,7 +848,42 @@ int App::run() {
             }
         }
 
-        update_emulation();
+        // How many emulated frames this refresh.
+        int steps = 1;
+        if (lockstep_) {
+            // One frame per refresh, but keep real time: if vsync stops blocking (window hidden or
+            // occluded) or refreshes are missed, skip or catch up instead of changing game speed.
+            const double refresh_ns = 1e9 / refresh_hz_;
+            Uint64 now = SDL_GetTicksNS();
+            lock_acc += double(now - last) - refresh_ns;
+            last = now;
+            if (lock_acc < -2 * refresh_ns) {  // running ahead
+                steps = 0;
+                lock_acc += refresh_ns;
+                SDL_DelayNS(Uint64(refresh_ns * 0.5));
+            } else if (lock_acc > 2 * refresh_ns) {  // fell behind
+                steps = 2;
+                lock_acc -= refresh_ns;
+            }
+            lock_acc = std::clamp(lock_acc, -4 * refresh_ns, 4 * refresh_ns);
+        } else if (vsync_) {
+            Uint64 now = SDL_GetTicksNS();
+            acc += now - last;
+            last = now;
+            acc = std::min<Uint64>(acc, frame_ns * 4);
+            steps = 0;
+            while (acc >= frame_ns && steps < 2) {
+                acc -= frame_ns;
+                ++steps;
+            }
+        }
+        bool reached_end = false;
+        for (int i = 0; i < steps; ++i) {
+            update_emulation();
+            ++frames_;
+            if (opt_.frames >= 0 && frames_ >= opt_.frames) { reached_end = true; break; }
+        }
+        update_audio_rate();
 
         bool menu = options_menu_open();
         if (menu_was_open_ && !menu) {  // apply what changed in the settings menu
@@ -806,10 +895,16 @@ int App::run() {
         menu_was_open_ = menu;
 
         if (screen_ == Screen::Game && !menu) {
-            if (!opt_.screenshot.empty() && opt_.frames >= 0 && frames_ + 1 == opt_.frames)
-                presenter_->capture_next(opt_.screenshot.string());
-            if (opt_.test_pattern || !game_) presenter_->present(pattern_.data(), controls_->remap_prompt());
-            else presenter_->present(game_->wide_framebuffer(), game_->wide_width(), controls_->remap_prompt());
+            if (!opt_.screenshot.empty() && reached_end) presenter_->capture_next(opt_.screenshot.string());
+            if (steps == 0) {
+                // No new emulated frame this refresh: show the same image again without re-blending.
+                presenter_->redraw(controls_->remap_prompt());
+                SDL_RenderPresent(renderer_);
+            } else if (opt_.test_pattern || !game_) {
+                presenter_->present(pattern_.data(), controls_->remap_prompt());
+            } else {
+                presenter_->present(game_->wide_framebuffer(), game_->wide_width(), controls_->remap_prompt());
+            }
             std::string msg = controls_->take_message();
             if (!msg.empty()) presenter_->show_message(msg);
         } else {
@@ -831,17 +926,17 @@ int App::run() {
             }
             SDL_SetRenderScale(renderer_, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
             ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer_);
-            if (!opt_.screenshot.empty() && opt_.frames >= 0 && frames_ + 1 == opt_.frames)
-                capture_window(opt_.screenshot.string());
+            if (!opt_.screenshot.empty() && reached_end) capture_window(opt_.screenshot.string());
             SDL_RenderPresent(renderer_);
         }
 
-        ++frames_;
-        if (opt_.frames >= 0 && frames_ >= opt_.frames) running_ = false;
-        next += frame_ns;
-        Uint64 now = SDL_GetTicksNS();
-        if (next > now) SDL_DelayPrecise(next - now);
-        else if (now - next > frame_ns * 5) next = now;
+        if (reached_end) running_ = false;
+        if (!vsync_) {  // fallback: sleep-based pacing
+            next += frame_ns;
+            Uint64 now = SDL_GetTicksNS();
+            if (next > now) SDL_DelayPrecise(next - now);
+            else if (now - next > frame_ns * 5) next = now;
+        }
     }
     if (!opt_.dump_frame.empty() && game_) write_bmp(opt_.dump_frame.string(), game_->framebuffer());
     shutdown();

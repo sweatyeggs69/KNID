@@ -35,7 +35,7 @@ struct Options {
     bool test_pattern = false, headless = false, verbose = false, play = false;
     std::string create_shortcut;  // "applications" or "desktop"
     bool open_settings = false;
-    bool mute = false;
+    bool mute = false, silent_audio = false;
     std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
@@ -88,6 +88,7 @@ int main(int argc, char** argv) {
         else if (a == "--create-shortcut") opt.create_shortcut = next();
         else if (a == "--open-settings") opt.open_settings = true;
         else if (a == "--mute") opt.mute = true;
+        else if (a == "--silent-audio") opt.silent_audio = true;
         else if (a == "--import-save") opt.import_save = next();
         else if (a == "--export-save") opt.export_save = next();
         else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
@@ -154,6 +155,7 @@ int main(int argc, char** argv) {
         app.open_settings = opt.open_settings;
         app.input_script = opt.script;
         app.mute = opt.mute;
+        app.silent_audio = opt.silent_audio;
         int rc = knid::run_app(app);
         SDL_Quit();
         return rc;
