@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <deque>
@@ -133,6 +134,8 @@ void draw() {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+        // Always above other windows (e.g. the F1 menu) without taking focus or input.
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         ImDrawList* dl = ImGui::GetWindowDrawList();
         if (t.tex) {
             float hgt = 80.0f, wdt = hgt * float(t.w) / float(t.h);

@@ -2,6 +2,8 @@
 // input and require identical hashes. Uses the user's ROM if present (KNID_ROM or the default
 // path baked in by CMake); skipped (exit 77) otherwise. Nothing from the ROM is written to disk.
 #include <cstdio>
+#include <filesystem>
+#include <memory>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -47,7 +49,8 @@ int main() {
         std::printf("skipped: ROM not available (set KNID_ROM)\n");
         return 77;
     }
-    knid::gba::Gba gba(loaded.rom.data, {});
+    auto gba_heap = std::make_unique<knid::gba::Gba>(loaded.rom.data, std::filesystem::path{});  // >500 KB: never on the stack
+    auto& gba = *gba_heap;
     std::vector<knid::gba::s16> audio;
     long f = 0;
     auto step = [&] {
@@ -87,7 +90,8 @@ int main() {
             for (long i = 0; i < n; ++i) { g.set_keys(keys_for(from + i)); g.run_frame(); audio.clear(); g.take_audio(audio); }
         };
         // Real BIOS determinism.
-        knid::gba::Gba real(loaded.rom.data, {});
+        auto real_heap = std::make_unique<knid::gba::Gba>(loaded.rom.data, std::filesystem::path{});  // >500 KB: never on the stack
+        auto& real = *real_heap;
         real.use_bios(bios);
         real.reset();
         run(real, 0, 1500);
@@ -110,17 +114,20 @@ int main() {
             }
             return changes > 30;
         };
-        knid::gba::Gba hle(loaded.rom.data, {});
+        auto hle_heap = std::make_unique<knid::gba::Gba>(loaded.rom.data, std::filesystem::path{});  // >500 KB: never on the stack
+        auto& hle = *hle_heap;
         run(hle, 0, 1500);
         auto hle_state = hle.save_state();
-        knid::gba::Gba real2(loaded.rom.data, {});
+        auto real2_heap = std::make_unique<knid::gba::Gba>(loaded.rom.data, std::filesystem::path{});  // >500 KB: never on the stack
+        auto& real2 = *real2_heap;
         real2.use_bios(bios);
         real2.reset();
         bool ok1 = real2.load_state(hle_state, &err);
         bool run1 = ok1 && keeps_running(real2, 1500);
         std::printf("HLE state -> real BIOS: %s%s\n", ok1 ? "loaded" : ("refused: " + err).c_str(),
                     ok1 ? (run1 ? ", game keeps running" : ", GAME STALLED") : "");
-        knid::gba::Gba hle2(loaded.rom.data, {});
+        auto hle2_heap = std::make_unique<knid::gba::Gba>(loaded.rom.data, std::filesystem::path{});  // >500 KB: never on the stack
+        auto& hle2 = *hle2_heap;
         bool ok2 = hle2.load_state(st, &err);
         bool run2 = ok2 && keeps_running(hle2, 1500);
         std::printf("real BIOS state -> HLE: %s%s\n", ok2 ? "loaded" : ("refused: " + err).c_str(),
@@ -128,7 +135,8 @@ int main() {
         if (!run1 || !run2) ++failures;
 
         // Booting through the BIOS intro shows the logo, then the game takes over and runs.
-        knid::gba::Gba boot(loaded.rom.data, {});
+        auto boot_heap = std::make_unique<knid::gba::Gba>(loaded.rom.data, std::filesystem::path{});  // >500 KB: never on the stack
+        auto& boot = *boot_heap;
         boot.use_bios(bios);
         boot.set_bios_boot(true);
         boot.reset();
