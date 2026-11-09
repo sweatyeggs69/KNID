@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <string>
 
+#include "app/fsutil.h"  // move_to_trash, utf8 paths
 #include "rom.h"
 
 namespace knid {
@@ -48,7 +49,5 @@ ShortcutState shortcut_state(ShortcutPlace place);
 ShortcutResult create_shortcut(ShortcutPlace place, bool replace_foreign = false);
 // Moves our shortcut to the Trash. Foreign items are never touched.
 ShortcutResult remove_shortcut(ShortcutPlace place);
-// Moves a file or folder to the user's Trash (never deletes). Returns false on failure.
-bool move_to_trash(const std::filesystem::path& p, std::filesystem::path* where = nullptr);
 
 }  // namespace knid

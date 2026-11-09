@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <iterator>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -155,9 +157,54 @@ std::vector<std::uint8_t> render(int size) {
 
 }  // namespace
 
+// Encodes a PNG to memory by writing it to a temp file path; simpler: reuse write_png's logic.
+std::vector<std::uint8_t> png_bytes(int px) {
+    std::string tmp = "knid_icon_tmp_" + std::to_string(px) + ".png";
+    if (!write_png(tmp, px, px, render(px))) return {};
+    std::ifstream f(tmp, std::ios::binary);
+    std::vector<std::uint8_t> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    f.close();
+    std::remove(tmp.c_str());
+    return b;
+}
+
+// Windows .ico with PNG-compressed entries (supported since Windows Vista).
+bool write_ico(const std::string& path) {
+    const int sizes[] = {16, 24, 32, 48, 64, 128, 256};
+    std::vector<std::vector<std::uint8_t>> imgs;
+    for (int s : sizes) imgs.push_back(png_bytes(s));
+    std::vector<std::uint8_t> out;
+    auto le16 = [&](unsigned v) { out.push_back(std::uint8_t(v)); out.push_back(std::uint8_t(v >> 8)); };
+    auto le32 = [&](std::uint32_t v) { for (int i = 0; i < 4; ++i) out.push_back(std::uint8_t(v >> (8 * i))); };
+    le16(0);
+    le16(1);
+    le16(unsigned(imgs.size()));
+    std::uint32_t offset = 6 + 16 * std::uint32_t(imgs.size());
+    for (size_t i = 0; i < imgs.size(); ++i) {
+        out.push_back(std::uint8_t(sizes[i] >= 256 ? 0 : sizes[i]));
+        out.push_back(std::uint8_t(sizes[i] >= 256 ? 0 : sizes[i]));
+        out.push_back(0);
+        out.push_back(0);
+        le16(1);
+        le16(32);
+        le32(std::uint32_t(imgs[i].size()));
+        le32(offset);
+        offset += std::uint32_t(imgs[i].size());
+    }
+    for (auto& img : imgs) out.insert(out.end(), img.begin(), img.end());
+    std::ofstream f(path, std::ios::binary);
+    f.write(reinterpret_cast<const char*>(out.data()), std::streamsize(out.size()));
+    return bool(f);
+}
+
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::fprintf(stderr, "usage: knid_icon <out.iconset>\n");
+    if (argc == 3 && std::string(argv[1]) == "--ico") return write_ico(argv[2]) ? 0 : 1;
+    if (argc == 4 && std::string(argv[1]) == "--png") {
+        int px = std::atoi(argv[2]);
+        return px > 0 && write_png(argv[3], px, px, render(px)) ? 0 : 1;
+    }
+    if (argc < 2 || argv[1][0] == '-') {
+        std::fprintf(stderr, "usage: knid_icon <out.iconset> | --ico <out.ico> | --png <size> <out.png>\n");
         return 2;
     }
     std::string dir = argv[1];

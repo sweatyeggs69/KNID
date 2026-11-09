@@ -1,0 +1,145 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No ROM, BIOS or game data is available in CI; tests that need them skip themselves.
+
+jobs:
+  macos:
+    name: macOS (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-macos-${{ hashFiles('CMakeLists.txt') }}
+      - name: Tools
+        run: brew list ninja >/dev/null 2>&1 || brew install ninja
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DFETCHCONTENT_BASE_DIR="$GITHUB_WORKSPACE/.deps"
+          -DKNID_MACOS_BUNDLE=ON -DKNID_VENDOR_SDL=ON -DKNID_BUILD_TOOLS=OFF
+          "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: cmake --build build --target dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KNID-macOS
+          path: build/KNID-*-macOS.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .deps
+            ${{ github.workspace }}/vcpkg-cache
+          key: deps-windows-${{ hashFiles('CMakeLists.txt') }}
+      - name: zlib (vcpkg, static)
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg" install zlib:x64-windows-static
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          "-DFETCHCONTENT_BASE_DIR=$env:GITHUB_WORKSPACE/.deps"
+          -DKNID_VENDOR_SDL=ON -DKNID_BUILD_TOOLS=OFF -DKNID_PACKAGE=ON
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package
+        run: cmake --build build --config Release --target package_zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KNID-Windows
+          path: build/KNID-*-Windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux (x86_64 AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-linux-${{ hashFiles('CMakeLists.txt') }}
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build zlib1g-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev libibus-1.0-dev \
+            libfuse2 file
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DFETCHCONTENT_BASE_DIR="$GITHUB_WORKSPACE/.deps"
+          -DKNID_VENDOR_SDL=ON -DKNID_BUILD_TOOLS=OFF -DKNID_PACKAGE=ON -DCMAKE_INSTALL_PREFIX=/usr
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          ARCH: x86_64
+        run: |
+          VERSION=$(grep -oP 'project\(knid LANGUAGES C CXX VERSION \K[0-9.]+' CMakeLists.txt)
+          DESTDIR="$PWD/AppDir" cmake --install build
+          cp packaging/linux/knid.desktop AppDir/knid.desktop
+          cp build/knid.png AppDir/knid.png
+          ln -sf usr/bin/knid AppDir/AppRun
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ./appimagetool AppDir "KNID-${VERSION}-x86_64.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KNID-Linux
+          path: KNID-*-x86_64.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

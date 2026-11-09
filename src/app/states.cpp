@@ -7,6 +7,7 @@
 #include <fstream>
 #include <system_error>
 
+#include "app/fsutil.h"
 #include "app/save_import.h"
 #include "gba/gba.h"
 
@@ -242,15 +243,6 @@ bool write_png(const fs::path& path, const std::uint16_t* px) {
     return write_file_atomic(path, png);
 }
 
-fs::path trash_dir() {
-    const char* home = std::getenv("HOME");
-#if defined(__APPLE__)
-    return home ? fs::path(home) / ".Trash" : fs::path();
-#else
-    return home ? fs::path(home) / ".local" / "share" / "Trash" / "files" : fs::path();
-#endif
-}
-
 }  // namespace
 
 std::string slot_name(int slot) { return slot == kAutoSlot ? "Auto" : "Slot " + std::to_string(slot); }
@@ -364,17 +356,11 @@ bool Store::undo_load(gba::Gba& g, std::string* error) {
 
 bool Store::remove(int slot, std::string* error) {
     std::error_code ec;
-    fs::path trash = trash_dir();
-    fs::create_directories(trash, ec);
     for (const char* ext : {".knst", ".png", ".bak"}) {
         fs::path f = file(slot);
         f.replace_extension(ext);
         if (!fs::exists(f, ec)) continue;
-        fs::path dst = trash / ("KNID " + sha1_.substr(0, 8) + " " + f.filename().string());
-        for (int n = 2; fs::exists(dst, ec); ++n)
-            dst = trash / ("KNID " + sha1_.substr(0, 8) + " " + f.stem().string() + " " + std::to_string(n) + ext);
-        fs::rename(f, dst, ec);
-        if (ec) {
+        if (!move_to_trash(f)) {
             if (error) *error = "Could not move " + f.string() + " to the Trash.";
             return false;
         }

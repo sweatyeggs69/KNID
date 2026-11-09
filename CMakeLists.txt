@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
+# Windows: static MSVC runtime so KNID.exe runs without installing the VC++ redistributable.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
 if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 endif()
@@ -8,12 +10,21 @@ project(knid LANGUAGES C CXX VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(MSVC)
+    add_compile_options(/utf-8)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX)
+endif()
 
 option(KNID_FETCH_SDL "Download and build SDL3 if it is not installed" ON)
 option(KNID_BUILD_TESTS "Build headless tests" ON)
 option(KNID_BUILD_TOOLS "Build analysis tools (knid_disasm, needs Capstone)" ON)
 option(KNID_MACOS_BUNDLE "Build KNID.app (and the `dmg` target) on macOS" OFF)
 option(KNID_VENDOR_SDL "Always build SDL3 from source (static) instead of using a system install" OFF)
+option(KNID_PACKAGE "Add packaging targets (Windows zip, Linux AppDir install)" OFF)
+
+# App icon renderer (original procedural artwork); used for the macOS .icns, Windows .ico and
+# the Linux icon.
+add_executable(knid_icon tools/knid_icon/main.cpp)
 
 # Core: ROM loading and verification. No SDL dependency, so it can be tested headless.
 add_library(knid_core STATIC
@@ -28,8 +39,11 @@ else()
 endif()
 
 # Save import/export and backups (no SDL).
-add_library(knid_saves STATIC src/app/save_import.cpp)
+add_library(knid_saves STATIC src/app/save_import.cpp src/app/fsutil.cpp)
 target_include_directories(knid_saves PUBLIC src)
+if(WIN32)
+    target_link_libraries(knid_saves PUBLIC shell32 ole32 uuid)
+endif()
 if(NOT MSVC)
     target_compile_options(knid_saves PRIVATE -Wall -Wextra)
 endif()
@@ -153,10 +167,51 @@ if(TARGET SDL3::SDL3)
     endif()
 
     add_executable(knid src/main.cpp)
+    if(WIN32)
+        # GUI program (no console window), KNID.exe with the star icon and version info.
+        set(knid_ico "${CMAKE_CURRENT_BINARY_DIR}/knid.ico")
+        add_custom_command(OUTPUT "${knid_ico}" COMMAND knid_icon --ico "${knid_ico}" DEPENDS knid_icon
+                           COMMENT "Rendering knid.ico")
+        configure_file(packaging/windows/knid.rc.in "${CMAKE_CURRENT_BINARY_DIR}/knid.rc" @ONLY)
+        target_sources(knid PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/knid.rc" "${knid_ico}")
+        set_target_properties(knid PROPERTIES WIN32_EXECUTABLE TRUE OUTPUT_NAME KNID)
+        target_link_libraries(knid PRIVATE ole32 shell32 uuid)
+    endif()
     target_link_libraries(knid PRIVATE knid_launcher knid_core knid_gba knid_options imgui SDL3::SDL3)
     if(APPLE AND KNID_MACOS_BUNDLE)
         include(cmake/MacBundle.cmake)
         knid_configure_bundle(knid)
+    endif()
+    if(KNID_PACKAGE AND WIN32)
+        # Portable zip: KNID.exe + readme + licenses.
+        set(stage "${CMAKE_CURRENT_BINARY_DIR}/zip-stage/KNID")
+        set(zip "${CMAKE_CURRENT_BINARY_DIR}/KNID-${PROJECT_VERSION}-Windows-x64.zip")
+        add_custom_target(package_zip
+            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CMAKE_CURRENT_BINARY_DIR}/zip-stage" "${zip}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${stage}/licenses"
+            COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:knid>" "${stage}/"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/packaging/README-Windows.txt" "${stage}/Read Me.txt"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/LICENSE" "${stage}/LICENSE.txt"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${stage}/"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/OFL.txt" "${stage}/licenses/Fredoka-OFL.txt"
+            COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_CURRENT_BINARY_DIR}/zip-stage" "${CMAKE_COMMAND}" -E tar cf "${zip}" --format=zip KNID
+            DEPENDS knid
+            COMMENT "Building ${zip}"
+            VERBATIM)
+    endif()
+    if(KNID_PACKAGE AND UNIX AND NOT APPLE)
+        # Portable Linux binary: static libstdc++/libgcc; SDL is static and loads X11/Wayland/
+        # ALSA/PulseAudio/PipeWire at runtime. Installed into an AppDir by the workflow.
+        target_link_options(knid PRIVATE -static-libstdc++ -static-libgcc)
+        set(knid_png "${CMAKE_CURRENT_BINARY_DIR}/knid.png")
+        add_custom_command(OUTPUT "${knid_png}" COMMAND knid_icon --png 256 "${knid_png}" DEPENDS knid_icon
+                           COMMENT "Rendering knid.png")
+        add_custom_target(knid_linux_icon ALL DEPENDS "${knid_png}")
+        install(TARGETS knid RUNTIME DESTINATION bin)
+        install(FILES packaging/linux/knid.desktop DESTINATION share/applications)
+        install(FILES "${knid_png}" DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES LICENSE THIRD_PARTY_NOTICES.md packaging/README-Linux.txt DESTINATION share/doc/knid)
+        install(FILES assets/fonts/OFL.txt DESTINATION share/doc/knid RENAME Fredoka-OFL.txt)
     endif()
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")

@@ -12,7 +12,6 @@ function(knid_configure_bundle target)
 
     # App icon, drawn procedurally by knid_icon (original artwork).
     set(icon "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.icns")
-    add_executable(knid_icon tools/knid_icon/main.cpp)
     add_custom_command(OUTPUT "${icon}"
         COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.iconset"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/AppIcon.iconset"
@@ -23,10 +22,13 @@ function(knid_configure_bundle target)
     target_sources(${target} PRIVATE "${icon}")
     set_source_files_properties("${icon}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
-    # Licenses for bundled third-party code and fonts.
+    # License and third-party notices.
     set(lic "${PROJECT_SOURCE_DIR}/assets/fonts/OFL.txt")
     target_sources(${target} PRIVATE "${lic}")
     set_source_files_properties("${lic}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources/licenses/Fredoka)
+    set(notices "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md")
+    target_sources(${target} PRIVATE ${notices})
+    set_source_files_properties(${notices} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/licenses)
 
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND xattr -cr "$<TARGET_BUNDLE_DIR:${target}>"
@@ -41,6 +43,7 @@ function(knid_configure_bundle target)
         COMMAND cp -R "$<TARGET_BUNDLE_DIR:${target}>" "${stage}/"
         COMMAND ln -s /Applications "${stage}/Applications"
         COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/packaging/README-macOS.txt" "${stage}/Read Me.txt"
+        COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/LICENSE" "${stage}/LICENSE.txt"
         COMMAND hdiutil create -volname "KNID" -srcfolder "${stage}" -ov -format UDZO "${dmg}"
         DEPENDS ${target}
         COMMENT "Building ${dmg}"

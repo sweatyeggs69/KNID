@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KNID
+GenericName=Kirby: Nightmare in Dream Land (native)
+Comment=Play your own copy of Kirby: Nightmare in Dream Land natively
+Exec=knid
+Icon=knid
+Terminal=false
+Categories=Game;

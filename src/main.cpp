@@ -13,6 +13,13 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 #include "app/app.h"
 #include "app/bmp.h"
 #include "app/config.h"
@@ -62,6 +69,7 @@ void usage() {
         "  --dump-audio <wav> write headless audio to a WAV file\n"
         "  --input <script>   scripted input, e.g. 300:8,310:0 (game frame:hex key mask); also in --play\n"
         "  --verbose          log unimplemented BIOS calls\n"
+        "  --console          (Windows) open a console window for log output\n"
         "  --mute             no sound (opens no audio device; settings are not changed)\n"
         "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
@@ -71,23 +79,42 @@ void usage() {
 }
 }  // namespace
 
+#if defined(_WIN32)
+// KNID.exe is a GUI program (no console window). When started from a terminal, print to it;
+// --console opens a new console window for logs.
+void attach_console(bool force) {
+    if (AttachConsole(ATTACH_PARENT_PROCESS) || (force && AllocConsole())) {
+        FILE* f = nullptr;
+        freopen_s(&f, "CONOUT$", "w", stdout);
+        freopen_s(&f, "CONOUT$", "w", stderr);
+    }
+}
+#endif
+
 int main(int argc, char** argv) {
+#if defined(_WIN32)
+    bool force_console = false;
+    for (int i = 1; i < argc; ++i) force_console |= std::string(argv[i]) == "--console";
+    attach_console(force_console);
+#endif
     Options opt;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+        auto next_path = [&]() { return knid::utf8_path(next()); };
         if (a == "--test-pattern") opt.test_pattern = true;
-        else if (a == "--bios") opt.bios = next();
+        else if (a == "--console") {}
+        else if (a == "--bios") opt.bios = next_path();
         else if (a == "--frames") opt.frames = std::strtol(next().c_str(), nullptr, 10);
         else if (a == "--headless") opt.headless = true;
-        else if (a == "--dump-frame") opt.dump_frame = next();
+        else if (a == "--dump-frame") opt.dump_frame = next_path();
         else if (a == "--input") opt.script = next();
-        else if (a == "--dump-audio") opt.dump_audio = next();
+        else if (a == "--dump-audio") opt.dump_audio = next_path();
         else if (a == "--verbose") opt.verbose = true;
-        else if (a == "--screenshot") opt.screenshot = next();
+        else if (a == "--screenshot") opt.screenshot = next_path();
         else if (a == "--play") opt.play = true;
-        else if (a == "--pref-dir") opt.pref_dir = next();
-        else if (a == "--select-rom") opt.select_rom = next();
+        else if (a == "--pref-dir") opt.pref_dir = next_path();
+        else if (a == "--select-rom") opt.select_rom = next_path();
         else if (a == "--create-shortcut") opt.create_shortcut = next();
         else if (a == "--remove-shortcut") { opt.create_shortcut = next(); opt.remove_shortcut = true; }
         else if (a == "--open-settings") {
@@ -97,17 +124,17 @@ int main(int argc, char** argv) {
         else if (a == "--state-script") opt.state_script = next();
         else if (a == "--mute") opt.mute = true;
         else if (a == "--silent-audio") opt.silent_audio = true;
-        else if (a == "--import-save") opt.import_save = next();
-        else if (a == "--export-save") opt.export_save = next();
+        else if (a == "--import-save") opt.import_save = next_path();
+        else if (a == "--export-save") opt.export_save = next_path();
         else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
         else if (a == "-h" || a == "--help") { usage(); return 0; }
-        else opt.rom = a;
+        else opt.rom = knid::utf8_path(a);
     }
     bool gui = !opt.headless;
 
     if (!opt.import_save.empty() || !opt.export_save.empty()) {
         knid::Config config(opt.pref_dir);
-        std::filesystem::path rp = !opt.rom.empty() ? opt.rom : std::filesystem::path(config.get_string("rom.path"));
+        std::filesystem::path rp = !opt.rom.empty() ? opt.rom : knid::utf8_path(config.get_string("rom.path"));
         knid::VerifiedRom v = knid::verify_rom(rp);
         if (!v.ok) {
             fail(rp.empty() ? "No ROM is configured; choose it in the launcher first." : v.error, false);
@@ -175,7 +202,7 @@ int main(int argc, char** argv) {
     knid::Config config(opt.pref_dir);
     const char* base = SDL_GetBasePath();
     std::filesystem::path rom_path = !opt.rom.empty() ? opt.rom : knid::find_default_rom(base ? base : ".");
-    if (rom_path.empty()) rom_path = config.get_string("rom.path");
+    if (rom_path.empty()) rom_path = knid::utf8_path(config.get_string("rom.path"));
     if (rom_path.empty()) {
         fail("No ROM found. Pass the path to your own Kirby: Nightmare in Dream Land dump, "
              "or put the .gba file in a 'rom' folder next to the game.", gui);

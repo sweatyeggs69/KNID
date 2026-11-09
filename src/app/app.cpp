@@ -16,6 +16,7 @@
 
 #include "app/bmp.h"
 #include "app/config.h"
+#include "app/fsutil.h"
 #include "app/platform.h"
 #include "app/save_import.h"
 #include "app/states.h"
@@ -234,7 +235,7 @@ void App::shutdown() {
 void App::load_configured_rom() {
     std::string path = config_.get_string("rom.path");
     if (path.empty()) return;
-    VerifiedRom v = verify_rom(path);
+    VerifiedRom v = verify_rom(utf8_path(path));
     if (v.ok && v.rom.sha1 == config_.get_string("rom.sha1", v.rom.sha1)) {
         rom_ = std::move(v);
     } else {
@@ -249,7 +250,7 @@ void App::accept_rom(const fs::path& path) {
         return;
     }
     rom_error_.clear();
-    config_.set_string("rom.path", v.path.string());
+    config_.set_string("rom.path", path_utf8(v.path));
     config_.set_string("rom.sha1", v.rom.sha1);
     rom_ = std::move(v);
     game_.reset();
@@ -283,7 +284,7 @@ void App::open_bios_dialog() {
 }
 
 std::optional<std::vector<std::uint8_t>> App::load_bios(std::string* error) {
-    fs::path p = !opt_.bios.empty() ? opt_.bios : fs::path(config_.get_string("bios.path"));
+    fs::path p = !opt_.bios.empty() ? opt_.bios : utf8_path(config_.get_string("bios.path"));
     if (p.empty()) return std::nullopt;
     std::ifstream f(p, std::ios::binary);
     std::vector<std::uint8_t> bios((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
@@ -716,7 +717,7 @@ void App::draw_states_tab() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Show folder")) SDL_OpenURL(("file://" + store_->dir().string()).c_str());
+    if (ImGui::Button("Show folder")) SDL_OpenURL(file_url(store_->dir()).c_str());
     if (!states_msg_.empty()) ImGui::TextColored(states_msg_err_ ? c.bad : c.good, "%s", states_msg_.c_str());
     ImGui::Separator();
 
@@ -754,8 +755,7 @@ void App::draw_states_tab() {
         ImGui::PushFont(theme::font_small());
         if (usable) {
             char when[64];
-            std::tm tm{};
-            localtime_r(&i.saved_at, &tm);
+            std::tm tm = local_time(i.saved_at);
             std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", &tm);
             ImGui::TextColored(c.text_dim, "%s  |  played %s", when, states::format_playtime(i.playtime_frames).c_str());
         } else {
@@ -920,7 +920,7 @@ void App::draw_save_section() {
     if (ImGui::Button("Show save folder")) {
         std::error_code ec;
         fs::create_directories(saves, ec);
-        SDL_OpenURL(("file://" + saves.string()).c_str());
+        SDL_OpenURL(file_url(saves).c_str());
     }
     ImGui::BeginDisabled(!rom_.ok);
     ImGui::SameLine();
@@ -1192,7 +1192,7 @@ int App::run() {
     if (opt_.open_settings && screen_ != Screen::FirstRun) set_menu_open(true);
     if (!opt_.select_rom.empty()) {
         std::lock_guard<std::mutex> lock(pick_mutex_);
-        picked_rom_ = opt_.select_rom.string();
+        picked_rom_ = path_utf8(opt_.select_rom);
     }
 
     Uint64 next = SDL_GetTicksNS();
@@ -1204,23 +1204,23 @@ int App::run() {
         while (SDL_PollEvent(&e)) handle_event(e);
         {
             std::lock_guard<std::mutex> lock(pick_mutex_);
-            if (picked_rom_) { accept_rom(*picked_rom_); picked_rom_.reset(); }
+            if (picked_rom_) { accept_rom(utf8_path(*picked_rom_)); picked_rom_.reset(); }
             if (picked_import_) {
-                prepare_import(*picked_import_);
+                prepare_import(utf8_path(*picked_import_));
                 picked_import_.reset();
                 if (pending_save_) options_menu_set_open(true);
             }
-            if (picked_export_) { export_save(*picked_export_); picked_export_.reset(); }
+            if (picked_export_) { export_save(utf8_path(*picked_export_)); picked_export_.reset(); }
             if (picked_state_export_ && store_) {
                 std::string err;
-                bool ok = store_->export_slot(file_slot_, *picked_state_export_, &err);
+                bool ok = store_->export_slot(file_slot_, utf8_path(*picked_state_export_), &err);
                 states_msg_ = ok ? "Exported " + states::slot_name(file_slot_) + "." : err;
                 states_msg_err_ = !ok;
                 picked_state_export_.reset();
             }
             if (picked_state_import_ && store_) {
                 std::string err;
-                bool ok = store_->import_into(file_slot_, *picked_state_import_, &err);
+                bool ok = store_->import_into(file_slot_, utf8_path(*picked_state_import_), &err);
                 states_msg_ = ok ? "Imported into " + states::slot_name(file_slot_) + "." : err;
                 states_msg_err_ = !ok;
                 picked_state_import_.reset();

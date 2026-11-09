@@ -25,3 +25,6 @@ Screenshot*
 
 # Milestone screenshots (may show ROM-derived art)
 screenshots/
+
+# Original artwork that may be committed (procedural icon only; never game images)
+!docs/knid-icon.png

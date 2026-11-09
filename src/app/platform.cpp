@@ -5,12 +5,19 @@
 #include <system_error>
 
 #include "app/config.h"
+#include "app/fsutil.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <sys/stat.h>
 #elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
+#include <objbase.h>
+#include <shlobj.h>
+#include <shobjidl.h>
 #else
 #include <sys/stat.h>
 #include <unistd.h>
@@ -22,13 +29,70 @@ namespace fs = std::filesystem;
 namespace {
 constexpr const char* kShortcutName = "Kirby Nightmare in Dream Land";
 
-fs::path home_dir() {
-    if (const char* h = std::getenv("HOME")) return h;
 #if defined(_WIN32)
-    if (const char* h = std::getenv("USERPROFILE")) return h;
-#endif
-    return {};
+// Marker in the .lnk description so KNID recognizes its own shortcut.
+constexpr const wchar_t* kLnkMarker = L"(KNID shortcut)";
+
+fs::path known_folder(REFKNOWNFOLDERID id) {
+    PWSTR p = nullptr;
+    fs::path out;
+    if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &p))) out = fs::path(p);
+    CoTaskMemFree(p);
+    return out;
 }
+
+struct ComInit {
+    bool ok;
+    ComInit() : ok(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {}
+    ~ComInit() { if (ok) CoUninitialize(); }
+};
+
+// Reads a .lnk's description; empty if it is not a readable shortcut.
+std::wstring lnk_description(const fs::path& lnk) {
+    ComInit com;
+    IShellLinkW* link = nullptr;
+    std::wstring desc;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
+                                reinterpret_cast<void**>(&link))))
+        return desc;
+    IPersistFile* file = nullptr;
+    if (SUCCEEDED(link->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&file)))) {
+        if (SUCCEEDED(file->Load(lnk.wstring().c_str(), STGM_READ))) {
+            wchar_t buf[INFOTIPSIZE] = {};
+            if (SUCCEEDED(link->GetDescription(buf, INFOTIPSIZE))) desc = buf;
+        }
+        file->Release();
+    }
+    link->Release();
+    return desc;
+}
+
+bool write_lnk(const fs::path& lnk, const fs::path& exe, std::string* error) {
+    ComInit com;
+    IShellLinkW* link = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
+                                reinterpret_cast<void**>(&link)))) {
+        *error = "Windows could not create a shortcut object.";
+        return false;
+    }
+    link->SetPath(exe.wstring().c_str());
+    link->SetArguments(L"--play");
+    link->SetWorkingDirectory(exe.parent_path().wstring().c_str());
+    link->SetIconLocation(exe.wstring().c_str(), 0);
+    std::wstring desc = L"Kirby: Nightmare in Dream Land ";
+    desc += kLnkMarker;
+    link->SetDescription(desc.c_str());
+    IPersistFile* file = nullptr;
+    bool ok = false;
+    if (SUCCEEDED(link->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&file)))) {
+        ok = SUCCEEDED(file->Save(lnk.wstring().c_str(), TRUE));
+        file->Release();
+    }
+    link->Release();
+    if (!ok) *error = "Could not save " + path_utf8(lnk);
+    return ok;
+}
+#endif
 
 std::string shell_quote(const std::string& s) {
     std::string out = "'";
@@ -123,8 +187,8 @@ fs::path shortcut_path(ShortcutPlace place) {
     fs::path dir = home_dir() / (place == ShortcutPlace::Desktop ? "Desktop" : "Applications");
     return dir / (std::string(kShortcutName) + ".app");
 #elif defined(_WIN32)
-    (void)place;
-    return {};  // TODO: "<Start menu or Desktop>/Kirby Nightmare in Dream Land.lnk"
+    fs::path dir = known_folder(place == ShortcutPlace::Desktop ? FOLDERID_Desktop : FOLDERID_Programs);
+    return dir.empty() ? fs::path() : dir / (std::string(kShortcutName) + ".lnk");
 #else
     fs::path dir = place == ShortcutPlace::Desktop ? home_dir() / "Desktop"
                                                    : home_dir() / ".local" / "share" / "applications";
@@ -140,34 +204,14 @@ ShortcutState shortcut_state(ShortcutPlace place) {
     std::ifstream f(p / "Contents" / "Info.plist");
     std::string plist((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     bool ours = plist.find(kShortcutId) != std::string::npos || plist.find(kOldShortcutId) != std::string::npos;
+#elif defined(_WIN32)
+    bool ours = lnk_description(p).find(kLnkMarker) != std::wstring::npos;
 #else
     std::ifstream f(p);
     std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     bool ours = text.find("X-KNID-Shortcut=true") != std::string::npos;
 #endif
     return ours ? ShortcutState::Ours : ShortcutState::Foreign;
-}
-
-bool move_to_trash(const fs::path& p, fs::path* where) {
-    std::error_code ec;
-#if defined(__APPLE__) || !defined(_WIN32)
-#if defined(__APPLE__)
-    fs::path trash = home_dir() / ".Trash";
-#else
-    fs::path trash = home_dir() / ".local" / "share" / "Trash" / "files";
-#endif
-    fs::create_directories(trash, ec);
-    fs::path dst = trash / p.filename();
-    for (int n = 2; fs::exists(fs::symlink_status(dst, ec)); ++n)
-        dst = trash / (p.stem().string() + " " + std::to_string(n) + p.extension().string());
-    fs::rename(p, dst, ec);
-    if (ec) return false;
-    if (where) *where = dst;
-    return true;
-#else
-    (void)p; (void)where;
-    return false;  // TODO: SHFileOperationW with FOF_ALLOWUNDO
-#endif
 }
 
 ShortcutResult remove_shortcut(ShortcutPlace place) {
@@ -259,12 +303,22 @@ ShortcutResult create_shortcut(ShortcutPlace place, bool replace_foreign) {
     }
     // Let Finder/Launch Services notice the updated bundle.
     fs::last_write_time(target, fs::file_time_type::clock::now(), ec);
+#elif defined(_WIN32)
+    fs::create_directories(target.parent_path(), ec);
+    std::string err;
+    if (!write_lnk(target, exe, &err)) {  // IPersistFile::Save overwrites ours in place
+        r.message = err;
+        return r;
+    }
 #else
     fs::create_directories(target.parent_path(), ec);
+    // Inside an AppImage the executable lives in a temporary mount; point at the AppImage file.
+    fs::path launch = exe;
+    if (const char* appimage = std::getenv("APPIMAGE"); appimage && *appimage) launch = utf8_path(appimage);
     {
         std::ofstream d(target, std::ios::trunc);
-        d << "[Desktop Entry]\nType=Application\nName=" << kShortcutName << "\nExec=\"" << exe.string()
-          << "\" --play\nTerminal=false\nCategories=Game;\nX-KNID-Shortcut=true\n";
+        d << "[Desktop Entry]\nType=Application\nName=" << kShortcutName << "\nExec=\"" << launch.string()
+          << "\" --play\nIcon=knid\nTerminal=false\nCategories=Game;\nX-KNID-Shortcut=true\n";
         if (!d) {
             r.message = "Could not write " + target.string();
             return r;

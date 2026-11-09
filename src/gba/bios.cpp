@@ -9,6 +9,7 @@
 namespace knid::gba {
 
 namespace {
+constexpr double kPi = 3.14159265358979323846;
 constexpr u32 kIntrCheck = 0x03007FF8;  // BIOS_IF: handlers OR acknowledged IRQ bits in here
 
 void put32(std::array<u8, 0x4000>& b, u32 a, u32 v) {
@@ -379,7 +380,7 @@ void Gba::hle_bg_affine_set() {
         double ox = s32(read32(src)) / 256.0, oy = s32(read32(src + 4)) / 256.0;
         double cx = s16(read16(src + 8)), cy = s16(read16(src + 10));
         double sx = s16(read16(src + 12)) / 256.0, sy = s16(read16(src + 14)) / 256.0;
-        double theta = (read16(src + 16) >> 8) / 128.0 * M_PI;
+        double theta = (read16(src + 16) >> 8) / 128.0 * kPi;
         double a = std::cos(theta), b = std::sin(theta);
         double pa = a * sx, pb = -b * sx, pc = b * sy, pd = a * sy;
         double rx = ox - (pa * cx + pb * cy), ry = oy - (pc * cx + pd * cy);
@@ -396,7 +397,7 @@ void Gba::hle_obj_affine_set() {
     u32 src = r_[0], dst = r_[1], n = r_[2], stride = r_[3];
     for (u32 i = 0; i < n; ++i, src += 8, dst += stride * 4) {
         double sx = s16(read16(src)) / 256.0, sy = s16(read16(src + 2)) / 256.0;
-        double theta = (read16(src + 4) >> 8) / 128.0 * M_PI;
+        double theta = (read16(src + 4) >> 8) / 128.0 * kPi;
         double a = std::cos(theta), b = std::sin(theta);
         write16(dst, u16(s16(a * sx * 256)));
         write16(dst + stride, u16(s16(-b * sx * 256)));
