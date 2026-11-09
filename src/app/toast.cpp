@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <deque>
@@ -133,6 +134,8 @@ void draw() {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+        // Always above other windows (e.g. the F1 menu) without taking focus or input.
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 wp = ImGui::GetWindowPos();
         // Accent stripe on the left edge.

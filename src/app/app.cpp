@@ -745,7 +745,7 @@ void App::draw_states_tab() {
         ImGui::TextUnformatted("Choose your ROM first (Game tab).");
         return;
     }
-    ImGui::TextWrapped("Shortcuts in game: %s. Current: %s. Change them in Controls.", hotkey_hint(false).c_str(),
+    ImGui::TextWrapped("Shortcuts in game: %s. Current: %s. Change them in Controls.", hotkey_hint(true).c_str(),
                        states::slot_name(slot_).c_str());
     ImGui::BeginDisabled(!store_->can_undo_load() || !game_);
     if (ImGui::Button("Undo last load")) {
@@ -761,19 +761,35 @@ void App::draw_states_tab() {
     if (!states_msg_.empty()) ImGui::TextColored(states_msg_err_ ? c.bad : c.good, "%s", states_msg_.c_str());
     ImGui::Separator();
 
+    // Fixed-size cards with constant padding and border, so nothing moves on hover or click.
+    const float pad = 12.0f, gap = 12.0f;
     float avail = ImGui::GetContentRegionAvail().x;
-    int cols = std::max(1, int(avail / 230.0f));
-    float card_w = (avail - ImGui::GetStyle().ItemSpacing.x * float(cols - 1)) / float(cols);
-    float thumb_w = card_w - 20, thumb_h = thumb_w * 2.0f / 3.0f;
+    int cols = std::max(1, int((avail + gap) / (220.0f + gap)));
+    float card_w = std::floor((avail - gap * float(cols - 1)) / float(cols));
+    float thumb_w = card_w - 2 * pad, thumb_h = std::floor(thumb_w * 2.0f / 3.0f);
+    ImGui::PushFont(theme::font_small());
+    float small_line = ImGui::GetTextLineHeight(), button_h = ImGui::GetFrameHeight();
+    ImGui::PopFont();
+    float card_h = 2 * pad + thumb_h + 8 + ImGui::GetTextLineHeight() + 4 + small_line + 10 + button_h;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     int col = 0;
     for (int slot = 0; slot <= states::kSlots; ++slot) {
         const states::SlotInfo& i = store_->info(slot);
         bool usable = i.exists && i.error.empty();
         ImGui::PushID(slot);
         bool current = slot == slot_;
-        if (current) ImGui::PushStyleColor(ImGuiCol_Border, c.yellow);
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, current ? 2.0f : 0.0f);
-        ImGui::BeginChild("##card", ImVec2(card_w, thumb_h + 150), ImGuiChildFlags_Borders);
+        ImGui::PushStyleColor(ImGuiCol_Border, current ? c.yellow : ImVec4(1, 1, 1, 0.10f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.5f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6, 6));
+        ImGui::BeginChild("##card", ImVec2(card_w, card_h),
+                          ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && !current) {
+            ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
+            ImGui::GetWindowDrawList()->AddRect(wp, ImVec2(wp.x + ws.x, wp.y + ws.y), theme::u32(c.pink, 0.6f),
+                                                ImGui::GetStyle().ChildRounding, 0, 1.5f);
+        }
         ImVec2 tp = ImGui::GetCursorScreenPos();
         if (SDL_Texture* t = thumb_texture(slot)) {
             ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(thumb_w, thumb_h));
@@ -790,14 +806,17 @@ void App::draw_states_tab() {
             slot_ = slot;
             config_.set_int("states.slot", slot_);
         }
+        ImGui::Dummy(ImVec2(0, 2));
         std::string title = states::slot_name(slot) + (i.label.empty() ? "" : ": " + i.label);
+        // One line, cut with "..." so the card never grows.
+        while (title.size() > 4 && ImGui::CalcTextSize(title.c_str()).x > thumb_w) title.resize(title.size() - 4), title += "...";
         ImGui::TextColored(current ? c.yellow : c.text, "%s", title.c_str());
         ImGui::PushFont(theme::font_small());
         if (usable) {
             char when[64];
             std::tm tm = local_time(i.saved_at);
-            std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", &tm);
-            ImGui::TextColored(c.text_dim, "%s  |  played %s", when, states::format_playtime(i.playtime_frames).c_str());
+            std::strftime(when, sizeof when, "%b %d, %H:%M", &tm);
+            ImGui::TextColored(c.text_dim, "%s  |  %s played", when, states::format_playtime(i.playtime_frames).c_str());
         } else {
             ImGui::TextColored(i.exists ? c.bad : c.text_dim, "%s", i.exists ? i.error.c_str() : "No state saved yet");
         }
@@ -848,12 +867,13 @@ void App::draw_states_tab() {
             ImGui::EndPopup();
         }
         ImGui::EndChild();
-        ImGui::PopStyleVar();
-        if (current) ImGui::PopStyleColor();
+        ImGui::PopStyleVar(3);
+        ImGui::PopStyleColor();
         ImGui::PopID();
         if (++col < cols) ImGui::SameLine();
         else col = 0;
     }
+    ImGui::PopStyleVar();  // card gap
 
     if (rename_slot_ >= 0) { ImGui::OpenPopup("Rename state"); }
     if (ImGui::BeginPopupModal("Rename state", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
