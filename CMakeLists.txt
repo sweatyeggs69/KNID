@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(KNID_FETCH_SDL "Download and build SDL3 if it is not installed" ON)
 option(KNID_BUILD_TESTS "Build headless tests" ON)
+option(KNID_BUILD_TOOLS "Build analysis tools (knid_disasm, needs Capstone)" ON)
 
 # Core: ROM loading and verification. No SDL dependency, so it can be tested headless.
 add_library(knid_core STATIC
@@ -50,4 +51,21 @@ if(KNID_BUILD_TESTS)
     add_executable(knid_romcheck tests/romcheck.cpp)
     target_link_libraries(knid_romcheck PRIVATE knid_core)
     add_test(NAME sha1_selftest COMMAND knid_romcheck --selftest)
+endif()
+
+# Analysis tools. Their output is derived from the ROM and goes to generated/ (gitignored).
+if(KNID_BUILD_TOOLS)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(CAPSTONE IMPORTED_TARGET capstone>=5)
+    endif()
+    if(TARGET PkgConfig::CAPSTONE)
+        add_executable(knid_disasm tools/knid_disasm/main.cpp)
+        target_link_libraries(knid_disasm PRIVATE knid_core PkgConfig::CAPSTONE)
+        if(NOT MSVC)
+            target_compile_options(knid_disasm PRIVATE -Wall -Wextra)
+        endif()
+    else()
+        message(WARNING "Capstone not found via pkg-config: skipping knid_disasm (brew install capstone pkgconf)")
+    endif()
 endif()
