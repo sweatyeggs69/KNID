@@ -126,6 +126,29 @@ if(TARGET SDL3::SDL3)
     target_include_directories(imgui PUBLIC ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends)
     target_link_libraries(imgui PUBLIC SDL3::SDL3)
 
+    # RetroAchievements: rcheevos (MIT) for the rc_client runtime, and stb_image (public domain)
+    # to decode PNG badges. Both pinned; built from source as plain C/C++ files.
+    FetchContent_Declare(rcheevos
+        GIT_REPOSITORY https://github.com/RetroAchievements/rcheevos.git
+        GIT_TAG v12.5.0
+        GIT_SHALLOW TRUE)
+    FetchContent_Declare(stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG 4e9b368bfc071e97206ea5c6adba68dd0cbf8897)
+    FetchContent_MakeAvailable(rcheevos stb)
+    set(rc ${rcheevos_SOURCE_DIR}/src)
+    add_library(rcheevos STATIC
+        ${rc}/rc_client.c ${rc}/rc_compat.c ${rc}/rc_util.c ${rc}/rc_version.c
+        ${rc}/rapi/rc_api_common.c ${rc}/rapi/rc_api_info.c ${rc}/rapi/rc_api_runtime.c ${rc}/rapi/rc_api_user.c
+        ${rc}/rcheevos/alloc.c ${rc}/rcheevos/condition.c ${rc}/rcheevos/condset.c ${rc}/rcheevos/consoleinfo.c
+        ${rc}/rcheevos/format.c ${rc}/rcheevos/lboard.c ${rc}/rcheevos/memref.c ${rc}/rcheevos/operand.c
+        ${rc}/rcheevos/rc_validate.c ${rc}/rcheevos/richpresence.c ${rc}/rcheevos/runtime.c
+        ${rc}/rcheevos/runtime_progress.c ${rc}/rcheevos/trigger.c ${rc}/rcheevos/value.c
+        ${rc}/rhash/md5.c)
+    target_include_directories(rcheevos PUBLIC ${rcheevos_SOURCE_DIR}/include ${rc})
+    target_include_directories(rcheevos SYSTEM PUBLIC ${stb_SOURCE_DIR})
+    set_target_properties(rcheevos PROPERTIES C_STANDARD 99)
+
     # Options panel (owned by the options work; display.* / input.* settings).
     add_library(knid_options STATIC
         src/options/options_panel.cpp
@@ -155,6 +178,9 @@ if(TARGET SDL3::SDL3)
         list(APPEND knid_font_cpp "${out}")
     endforeach()
     add_library(knid_launcher STATIC
+        src/app/achievements.cpp
+        src/app/credentials.cpp
+        src/app/http.cpp
         src/app/app.cpp
         src/app/platform.cpp
         src/app/theme.cpp
@@ -163,6 +189,16 @@ if(TARGET SDL3::SDL3)
     )
     target_include_directories(knid_launcher PUBLIC src)
     target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core knid_saves knid_states imgui SDL3::SDL3)
+    target_link_libraries(knid_launcher PRIVATE rcheevos)
+    target_compile_definitions(knid_launcher PRIVATE KNID_VERSION="${PROJECT_VERSION}")
+    if(APPLE)
+        target_link_libraries(knid_launcher PRIVATE "-framework Security" "-framework CoreFoundation")
+    elseif(WIN32)
+        target_link_libraries(knid_launcher PRIVATE winhttp advapi32)
+    else()
+        find_package(Threads REQUIRED)
+        target_link_libraries(knid_launcher PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+    endif()
     if(NOT MSVC)
         target_compile_options(knid_launcher PRIVATE -Wall -Wextra)
     endif()
@@ -240,6 +276,12 @@ if(KNID_BUILD_TESTS)
         KNID_TEST_BIOS="${PROJECT_SOURCE_DIR}/gba_bios.bin")
     add_test(NAME save_state_determinism COMMAND knid_state_test)
     set_tests_properties(save_state_determinism PROPERTIES SKIP_RETURN_CODE 77)
+    if(TARGET knid_launcher)
+        # RetroAchievements glue against canned server replies (offline).
+        add_executable(knid_achievements_test tests/achievements_test.cpp)
+        target_link_libraries(knid_achievements_test PRIVATE knid_launcher rcheevos)
+        add_test(NAME achievements COMMAND knid_achievements_test)
+    endif()
 endif()
 
 # Analysis tools. Their output is derived from the ROM and goes to generated/ (gitignored).
