@@ -183,6 +183,17 @@ void Gba::cpu_reset() {
     bank_spsr_.fill(0);
     bank_fiq_r8_.fill(0);
     bank_usr_r8_.fill(0);
+    halted_ = false;
+    intr_wait_ = false;
+    if (real_bios_ && bios_boot_) {
+        // Power-on state: the real BIOS runs its intro, then jumps to the cartridge itself.
+        cpsr_ = kModeSvc | kFlagI | (1u << 6);
+        pc_ = 0;
+        r_[15] = 8;
+        io_[0x300] = 0;  // POSTFLG = 0: first boot, so the BIOS shows the logo
+        bios_latch_ = 0;
+        return;
+    }
     // State after the BIOS boot sequence hands over to the cartridge.
     cpsr_ = kModeSvc | kFlagI | (1u << 6);
     r_[13] = 0x03007FE0;

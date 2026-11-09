@@ -97,6 +97,7 @@ private:
     size_t state_script_pos_ = 0;
     ShortcutPlace pending_shortcut_place_ = ShortcutPlace::Applications;
     bool confirm_shortcut_ = false;
+    std::string bios_checked_path_ = "\x01", bios_status_;
     fs::path current_save_path();
     void prepare_import(const fs::path& file);
     void apply_pending_save();
@@ -300,6 +301,8 @@ std::unique_ptr<gba::Gba> App::make_gba(bool with_save) {
     std::string err;
     if (auto bios = load_bios(&err)) {
         g->use_bios(std::move(*bios));
+        // Real games boot through the BIOS intro (logo + chime); the launcher backdrop skips it.
+        g->set_bios_boot(with_save);
         g->reset();
     } else if (!err.empty()) {
         info_ = err;
@@ -1031,13 +1034,28 @@ void App::draw_game_tab(Config& config) {
 
     ImGui::SeparatorText("BIOS (optional)");
     std::string bios = config_.get_string("bios.path");
-    ImGui::TextWrapped("%s", bios.empty() ? "Built-in BIOS. No file is needed." : bios.c_str());
+    if (bios != bios_checked_path_) {  // verify once per change, not every frame
+        bios_checked_path_ = bios;
+        bios_status_.clear();
+        if (!bios.empty() && !load_bios(&bios_status_) && bios_status_.empty())
+            bios_status_ = "The BIOS file could not be read; using the built-in BIOS.";
+    }
+    if (bios.empty()) {
+        ImGui::TextWrapped("Built-in BIOS. No file is needed.");
+    } else {
+        ImGui::TextWrapped("%s", bios.c_str());
+        if (bios_status_.empty())
+            ImGui::TextColored(c.good, "Retail GBA BIOS verified: the Game Boy logo plays when the game starts, "
+                                       "and the game runs on this BIOS.");
+        else
+            ImGui::TextColored(c.bad, "%s", bios_status_.c_str());
+    }
     if (ImGui::Button(bios.empty() ? "Use a BIOS file..." : "Use the built-in BIOS")) {
         if (bios.empty()) open_bios_dialog();
         else config_.erase("bios.path");
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("Takes effect when the game is restarted.");
+    ImGui::TextDisabled("Takes effect the next time the game starts.");
 
     ImGui::SeparatorText("Shortcut");
     ImGui::TextWrapped("A shortcut starts the game directly, skipping the launcher.");

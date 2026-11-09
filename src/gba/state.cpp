@@ -52,6 +52,57 @@ private:
     X(sq_) X(wave_) X(wave_ram_) X(noise_) X(fifo_) X(apu_sample_acc_) X(apu_seq_acc_)          \
     X(apu_seq_step_)
 
+// A state saved under one BIOS mode (real BIOS vs. HLE) can be loaded under the other only at a
+// point where no BIOS code is mid-way: the game itself running, or the game waiting in
+// IntrWait/VBlankIntrWait, which is then simply executed again under the new mode.
+bool Gba::convert_bios_mode(Gba& t, bool from_real) {
+    const u32 mode = t.cpsr_ & 0x1F;
+    if (mode == 0x12) return false;  // inside an IRQ (the dispatcher differs between modes)
+    if (!from_real) {
+        // HLE -> real BIOS. Only our IRQ stub lives in the BIOS region under HLE.
+        if (t.pc_ < 0x4000) return false;
+        if (t.intr_wait_) {  // re-execute the SWI at pc_ through the real BIOS
+            t.intr_wait_ = false;
+            t.halted_ = false;
+        }
+        return true;
+    }
+    // Real BIOS -> HLE.
+    if (t.pc_ >= 0x4000) return true;  // game code (not inside a SWI)
+    if (mode != 0x13) return false;  // only a SWI (SVC mode) can be unwound
+    const u32 caller = t.bank_spsr_[3];
+    if ((caller & 0x1F) == 0x12 || (caller & 0x1F) == 0x13) return false;
+    const bool thumb = caller & 0x20;
+    const u32 swi_at = t.r_[14] - (thumb ? 2 : 4);
+    auto rd8 = [&](u32 a) -> int {
+        switch (a >> 24) {
+            case 0x02: return t.ewram_[a & 0x3FFFF];
+            case 0x03: return t.iwram_[a & 0x7FFF];
+            case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D:
+                return (a & 0x01FFFFFF) < rom_.size() ? rom_[a & 0x01FFFFFF] : -1;
+            default: return -1;
+        }
+    };
+    int b0 = rd8(swi_at), b1 = rd8(swi_at + 1), b2 = rd8(swi_at + 2), b3 = thumb ? 0 : rd8(swi_at + 3);
+    if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) return false;
+    u32 number;
+    if (thumb) {
+        if (b1 != 0xDF) return false;
+        number = u32(b0);
+    } else {
+        if ((b3 & 0x0F) != 0x0F) return false;
+        number = u32(b2);
+    }
+    if (number != 4 && number != 5) return false;  // only IntrWait / VBlankIntrWait
+    // Leave the BIOS: back to the caller's mode with the SVC stack reset, then run the SWI again.
+    t.r_[13] = 0x03007FE0;
+    t.set_cpsr(caller);
+    t.pc_ = swi_at;
+    t.halted_ = false;
+    t.intr_wait_ = false;
+    return true;
+}
+
 std::vector<u8> Gba::save_state() const {
     std::vector<u8> out;
     out.reserve(0x60000);
@@ -98,8 +149,9 @@ bool Gba::load_state(const std::vector<u8>& data, std::string* error) {
     KNID_STATE_FIELDS(KNID_GET)
 #undef KNID_GET
     if (!r.done()) return fail("The save state has unexpected extra data.");
-    if (state_real_bios != real_bios_ && t.pc_ < 0x4000)
-        return fail("This save state was made with a different BIOS setting while the BIOS was running.");
+    if (state_real_bios != real_bios_ && !convert_bios_mode(t, state_real_bios))
+        return fail("This save state was made with a different BIOS setting at a moment that can't be "
+                    "converted (the BIOS or an interrupt was running). Switch the BIOS setting back to load it.");
 
 #define KNID_COPY(m) m = t.m;
     KNID_STATE_FIELDS(KNID_COPY)

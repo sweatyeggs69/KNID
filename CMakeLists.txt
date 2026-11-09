@@ -177,7 +177,8 @@ if(KNID_BUILD_TESTS)
     target_link_libraries(knid_state_test PRIVATE knid_gba knid_core)
     # Uses the user's own ROM when it sits in the source folder (it is never committed).
     target_compile_definitions(knid_state_test PRIVATE
-        KNID_TEST_ROM="${PROJECT_SOURCE_DIR}/Kirby - Nightmare in Dream Land.gba")
+        KNID_TEST_ROM="${PROJECT_SOURCE_DIR}/Kirby - Nightmare in Dream Land.gba"
+        KNID_TEST_BIOS="${PROJECT_SOURCE_DIR}/gba_bios.bin")
     add_test(NAME save_state_determinism COMMAND knid_state_test)
     set_tests_properties(save_state_determinism PROPERTIES SKIP_RETURN_CODE 77)
 endif()

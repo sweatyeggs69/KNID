@@ -58,6 +58,9 @@ public:
     // Call before reset(). The port never requires it.
     void use_bios(std::vector<u8> bios);
     bool using_real_bios() const { return real_bios_; }
+    // With a real BIOS: start at 0x00000000 in the power-on state so the BIOS intro (logo and
+    // chime) plays before the game. Takes effect on the next reset(). Ignored without a BIOS.
+    void set_bios_boot(bool boot) { bios_boot_ = boot; }
 
     void reset();
     // Runs until the start of the next VBlank, so framebuffer() holds a complete frame.
@@ -188,6 +191,7 @@ private:
     void hle_register_ram_reset(u32 flags);
     void hle_soft_reset();
     void write_decompressed(u32 dst, const std::vector<u8>& data, bool vram);
+    bool convert_bios_mode(Gba& snapshot, bool from_real_bios);
 
     // ---- state -----------------------------------------------------------------------------
     std::vector<u8> rom_;
@@ -201,6 +205,7 @@ private:
     std::array<u8, 0x400> oam_{};
     std::array<u8, 0x8000> sram_{};
     bool real_bios_ = false;
+    bool bios_boot_ = false;
     bool sram_dirty_ = false;
     u32 sram_dirty_frames_ = 0;
 
