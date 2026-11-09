@@ -56,7 +56,7 @@ void usage() {
         "  --headless         run without a window (with --frames / --dump-frame)\n"
         "  --dump-frame <bmp> write the last frame to a BMP file on exit\n"
         "  --dump-audio <wav> write headless audio to a WAV file\n"
-        "  --input <script>   headless input, e.g. 300:8,310:0 (frame:hex key mask)\n"
+        "  --input <script>   scripted input, e.g. 300:8,310:0 (game frame:hex key mask); also in --play\n"
         "  --verbose          log unimplemented BIOS calls\n"
         "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
@@ -149,6 +149,7 @@ int main(int argc, char** argv) {
         app.verbose = opt.verbose;
         app.frames = opt.frames;
         app.open_settings = opt.open_settings;
+        app.input_script = opt.script;
         int rc = knid::run_app(app);
         SDL_Quit();
         return rc;

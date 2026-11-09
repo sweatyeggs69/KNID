@@ -18,6 +18,7 @@ struct AppOptions {
     bool verbose = false;
     bool open_settings = false;         // open the settings menu at start (testing)
     long frames = -1;                   // quit after this many frames
+    std::string input_script;           // "frame:hexkeys,..." merged with real input in game
 };
 
 int run_app(const AppOptions& options);

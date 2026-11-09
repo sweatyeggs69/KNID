@@ -105,6 +105,10 @@ private:
     bool shortcut_popup_ = false;
     double game_started_at_ = 0;
     bool menu_was_open_ = false;
+    std::vector<std::pair<long, std::uint16_t>> script_;  // --input, in game frames
+    size_t script_pos_ = 0;
+    std::uint16_t script_keys_ = 0;
+    long game_frames_ = 0;
 
     std::mutex pick_mutex_;
     std::optional<std::string> picked_rom_, picked_bios_, picked_import_, picked_export_;
@@ -147,6 +151,7 @@ bool App::init_window() {
     ImGui_ImplSDL3_InitForSDLRenderer(window_, renderer_);
     ImGui_ImplSDLRenderer3_Init(renderer_);
     theme::apply(SDL_GetWindowPixelDensity(window_));
+    if (config_.get_string("display.fullscreen", "0") == "1") SDL_SetWindowFullscreen(window_, true);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
     register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
@@ -283,7 +288,9 @@ void App::handle_event(const SDL_Event& e) {
     if (e.type == SDL_EVENT_QUIT) { running_ = false; return; }
     bool key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat;
     if (key && e.key.key == SDLK_F11) {
-        SDL_SetWindowFullscreen(window_, !(SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN));
+        bool fs_on = !(SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN);
+        SDL_SetWindowFullscreen(window_, fs_on);
+        config_.set_string("display.fullscreen", fs_on ? "1" : "0");  // keep the menu checkbox in sync
         return;
     }
     if (options_menu_open()) {
@@ -315,9 +322,12 @@ void App::update_emulation() {
     } else if (screen_ == Screen::Game && game_ && options_menu_open()) {
         pixels = game_->framebuffer();  // paused under the settings menu
     } else if (screen_ == Screen::Game && game_) {
-        game_->set_keys(controls_->poll());
         game_->set_wide_margin(display::wide_margin(presenter_->settings().aspect));
+        while (script_pos_ < script_.size() && script_[script_pos_].first <= game_frames_)
+            script_keys_ = script_[script_pos_++].second;
+        game_->set_keys(std::uint16_t(controls_->poll() | script_keys_));
         game_->run_frame();
+        ++game_frames_;
         game_->take_audio(audio_buf_);
         pixels = game_->framebuffer();
     } else if (game_ && game_paused_) {
@@ -717,6 +727,16 @@ void App::draw_ui() {
 }
 
 int App::run() {
+    for (size_t p = 0; p < opt_.input_script.size();) {
+        size_t comma = opt_.input_script.find(',', p);
+        std::string item = opt_.input_script.substr(p, comma == std::string::npos ? std::string::npos : comma - p);
+        size_t colon = item.find(':');
+        if (colon != std::string::npos)
+            script_.emplace_back(std::strtol(item.c_str(), nullptr, 10),
+                                 std::uint16_t(std::strtol(item.c_str() + colon + 1, nullptr, 16)));
+        if (comma == std::string::npos) break;
+        p = comma + 1;
+    }
     if (!init_window()) {
         std::fprintf(stderr, "knid: could not create window: %s\n", SDL_GetError());
         return 1;
