@@ -21,6 +21,7 @@
 #include "gba/gba.h"
 #include "options/input.h"
 #include "options/options_panel.h"
+#include "options/display.h"
 #include "options/presenter.h"
 #include "sha1.h"
 
@@ -296,6 +297,7 @@ void App::update_emulation() {
         pixels = game_->framebuffer();  // paused under the settings menu
     } else if (screen_ == Screen::Game && game_) {
         game_->set_keys(controls_->poll());
+        game_->set_wide_margin(display::wide_margin(presenter_->settings().aspect));
         game_->run_frame();
         game_->take_audio(audio_buf_);
         pixels = game_->framebuffer();
@@ -595,14 +597,15 @@ int App::run() {
             presenter_->reload();
             controls_->reload();
             if (audio_) SDL_ClearAudioStream(audio_);
+            if (game_) game_->set_wide_margin(display::wide_margin(presenter_->settings().aspect));
         }
         menu_was_open_ = menu;
 
         if (screen_ == Screen::Game && !menu) {
-            const std::uint16_t* px = opt_.test_pattern ? pattern_.data() : game_->framebuffer();
             if (!opt_.screenshot.empty() && opt_.frames >= 0 && frames_ + 1 == opt_.frames)
                 presenter_->capture_next(opt_.screenshot.string());
-            presenter_->present(px, controls_->remap_prompt());
+            if (opt_.test_pattern || !game_) presenter_->present(pattern_.data(), controls_->remap_prompt());
+            else presenter_->present(game_->wide_framebuffer(), game_->wide_width(), controls_->remap_prompt());
             std::string msg = controls_->take_message();
             if (!msg.empty()) presenter_->show_message(msg);
         } else {
@@ -615,8 +618,8 @@ int App::run() {
             SDL_SetRenderScale(renderer_, 1, 1);
             if (screen_ == Screen::Game) {
                 // Paused game under the settings menu.
-                const std::uint16_t* px = opt_.test_pattern ? pattern_.data() : game_->framebuffer();
-                presenter_->draw(px, gba::kScreenWidth, controls_->remap_prompt());
+                if (opt_.test_pattern || !game_) presenter_->draw(pattern_.data(), gba::kScreenWidth, controls_->remap_prompt());
+                else presenter_->draw(game_->wide_framebuffer(), game_->wide_width(), controls_->remap_prompt());
             } else {
                 SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
                 SDL_RenderClear(renderer_);
