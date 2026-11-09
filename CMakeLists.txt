@@ -56,6 +56,32 @@ if(NOT SDL3_FOUND AND KNID_FETCH_SDL)
 endif()
 
 if(TARGET SDL3::SDL3)
+    # Dear ImGui (core + SDL3 platform + SDL_Renderer3 backends), pinned.
+    include(FetchContent)
+    FetchContent_Declare(imgui_src
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.91.8
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(imgui_src)
+    add_library(imgui STATIC
+        ${imgui_src_SOURCE_DIR}/imgui.cpp
+        ${imgui_src_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_src_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_src_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_src_SOURCE_DIR}/imgui_demo.cpp
+        ${imgui_src_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
+        ${imgui_src_SOURCE_DIR}/backends/imgui_impl_sdlrenderer3.cpp
+    )
+    target_include_directories(imgui PUBLIC ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends)
+    target_link_libraries(imgui PUBLIC SDL3::SDL3)
+
+    # Options panel (owned by the options work; display.* / input.* settings).
+    add_library(knid_options STATIC
+        src/options/options_panel.cpp
+    )
+    target_include_directories(knid_options PUBLIC src)
+    target_link_libraries(knid_options PUBLIC imgui)
+
     # App layer: settings, launcher UI. Uses SDL (pref path, dialogs).
     add_library(knid_app STATIC
         src/app/config.cpp
@@ -64,7 +90,7 @@ if(TARGET SDL3::SDL3)
     target_link_libraries(knid_app PUBLIC SDL3::SDL3)
 
     add_executable(knid src/main.cpp)
-    target_link_libraries(knid PRIVATE knid_core knid_gba knid_app SDL3::SDL3)
+    target_link_libraries(knid PRIVATE knid_core knid_gba knid_app knid_options imgui SDL3::SDL3)
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
 endif()

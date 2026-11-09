@@ -22,6 +22,10 @@ public:
     const std::filesystem::path& pref_dir() const { return pref_dir_; }
     const std::filesystem::path& file() const { return file_; }
 
+    // Untyped access. Values are stored verbatim (may contain '|', ':' and spaces).
+    std::string get(const std::string& key, const std::string& def = {}) const { return get_string(key, def); }
+    void set(const std::string& key, const std::string& value) { set_string(key, value); }
+
     bool has(const std::string& key) const { return values_.count(key) != 0; }
     std::string get_string(const std::string& key, const std::string& def = {}) const;
     int get_int(const std::string& key, int def = 0) const;
