@@ -4,8 +4,25 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      # Changes that never affect the apps. LICENSE and THIRD_PARTY_NOTICES.md are built
+      # into the app, and packaging/ READMEs ship in the downloads, so those still build.
+      # GitHub never applies path filters to tag pushes, so v* release builds always run.
+      - "README.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - ".gitignore"
+      - ".gitattributes"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - ".gitignore"
+      - ".gitattributes"
   workflow_dispatch:
 
 permissions:
