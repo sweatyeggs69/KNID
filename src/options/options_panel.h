@@ -19,9 +19,14 @@ SettingsIO settings_io(Config& config);
 // ImGui::NewFrame() and ImGui::Render().
 void draw_options_panel(knid::Config& config);
 
-// Adds a tab drawn before Display and Controls, in registration order. Registering the same
-// name again replaces its draw function.
-void register_options_tab(const char* name, std::function<void(knid::Config&)> draw);
+// Adds a tab. Tabs order as: tabs registered with before_builtin (in registration order),
+// then Display and Controls, then the other tabs in registration order. Registering the same
+// name again replaces its draw function and keeps its place.
+void register_options_tab(const char* name, std::function<void(knid::Config&)> draw,
+                          bool before_builtin = false);
+
+// Selects the named tab the next time the panel is drawn (for example "States").
+void options_select_tab(const char* name);
 
 // Forward every SDL event here (before ImGui) while the panel or menu is open. Needed for
 // gamepad hotplug and for capturing the next key or button when rebinding a control.

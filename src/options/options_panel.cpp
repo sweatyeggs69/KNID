@@ -32,7 +32,13 @@ using knid::input::Button;
 struct PanelState {
     Config* config = nullptr;
     std::unique_ptr<input::Manager> input;
-    std::vector<std::pair<std::string, std::function<void(Config&)>>> extra_tabs;
+    struct ExtraTab {
+        std::string name;
+        std::function<void(Config&)> draw;
+        bool before_builtin = false;
+    };
+    std::vector<ExtraTab> extra_tabs;
+    std::string select_tab;  // applied once on the next draw
     bool menu_open = false;
     std::function<void()> on_quit;
 };
@@ -259,22 +265,32 @@ void draw_options_panel(knid::Config& config) {
         st.input->set_shortcuts_enabled(false);
     }
     if (ImGui::BeginTabBar("options")) {
-        for (auto& [tab_name, draw] : st.extra_tabs) {
-            if (ImGui::BeginTabItem(tab_name.c_str())) {
-                if (draw) draw(config);
-                ImGui::EndTabItem();
+        std::string select = std::move(st.select_tab);
+        st.select_tab.clear();
+        auto flags = [&](const char* name) {
+            return select == name ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+        };
+        auto extras = [&](bool before) {
+            for (auto& t : st.extra_tabs) {
+                if (t.before_builtin != before) continue;
+                if (ImGui::BeginTabItem(t.name.c_str(), nullptr, flags(t.name.c_str()))) {
+                    if (t.draw) t.draw(config);
+                    ImGui::EndTabItem();
+                }
             }
-        }
-        if (ImGui::BeginTabItem("Display")) {
+        };
+        extras(true);
+        if (ImGui::BeginTabItem("Display", nullptr, flags("Display"))) {
             display_tab(config);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Controls")) {
+        if (ImGui::BeginTabItem("Controls", nullptr, flags("Controls"))) {
             controls_tab(*st.input, config);
             ImGui::EndTabItem();
         } else if (st.input->remapping()) {
             st.input->cancel_remap();  // left the tab mid-rebind
         }
+        extras(false);
         ImGui::EndTabBar();
     }
     st.input->take_message();
@@ -285,15 +301,17 @@ bool options_panel_handle_event(const SDL_Event& event) {
     return st.input ? st.input->handle_event(event) : false;
 }
 
-void register_options_tab(const char* name, std::function<void(knid::Config&)> draw) {
+void register_options_tab(const char* name, std::function<void(knid::Config&)> draw, bool before_builtin) {
     auto& tabs = state().extra_tabs;
     for (auto& t : tabs)
-        if (t.first == name) {
-            t.second = std::move(draw);
+        if (t.name == name) {
+            t.draw = std::move(draw);
             return;
         }
-    tabs.emplace_back(name, std::move(draw));
+    tabs.push_back({name, std::move(draw), before_builtin});
 }
+
+void options_select_tab(const char* name) { state().select_tab = name; }
 
 void options_menu_toggle() { options_menu_set_open(!state().menu_open); }
 

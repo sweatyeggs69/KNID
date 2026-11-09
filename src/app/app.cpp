@@ -6,6 +6,7 @@
 #include <imgui_impl_sdlrenderer3.h>
 
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -178,7 +179,7 @@ private:
 // ---- setup ---------------------------------------------------------------------------------
 
 bool App::init_window() {
-    window_ = SDL_CreateWindow("Kirby: Nightmare in Dream Land (KNID)", opt_.window_w > 0 ? opt_.window_w : 960,
+    window_ = SDL_CreateWindow("KNID", opt_.window_w > 0 ? opt_.window_w : 960,
                                opt_.window_h > 0 ? opt_.window_h : 640,
                                SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
     if (!window_) return false;
@@ -208,12 +209,8 @@ bool App::init_window() {
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
     achievements_ = std::make_unique<Achievements>(config_, renderer_);
-    if (opt_.open_tab == "achievements")
-        register_options_tab("Achievements", [this](Config&) { achievements_->draw_tab(); });
     updater_ = std::make_unique<update::Updater>(KNID_VERSION);
-    if (opt_.open_tab == "states") register_options_tab("States", [this](Config&) { draw_states_tab(); });
-    if (opt_.open_tab == "updates") register_options_tab("Updates", [this](Config& c) { update_ui::draw_tab(*updater_, c); });
-    register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
+    register_options_tab("Game", [this](Config& c) { draw_game_tab(c); }, /*before_builtin=*/true);
     register_options_tab("States", [this](Config&) { draw_states_tab(); });
     achievements_->set_restart_handler([this] {
         if (!game_) return;
@@ -1364,7 +1361,14 @@ int App::run() {
         screen_ = rom_.ok ? Screen::Launcher : Screen::FirstRun;
         start_attract();
     }
-    if (opt_.open_settings && screen_ != Screen::FirstRun) set_menu_open(true);
+    if (opt_.open_settings && screen_ != Screen::FirstRun) {
+        if (!opt_.open_tab.empty()) {
+            std::string tab = opt_.open_tab;
+            tab[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(tab[0])));
+            options_select_tab(tab.c_str());
+        }
+        set_menu_open(true);
+    }
     if (!opt_.select_rom.empty()) {
         std::lock_guard<std::mutex> lock(pick_mutex_);
         picked_rom_ = path_utf8(opt_.select_rom);
