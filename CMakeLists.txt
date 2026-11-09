@@ -1,0 +1,53 @@
+cmake_minimum_required(VERSION 3.24)
+if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+endif()
+
+project(knid LANGUAGES C CXX VERSION 0.1.0)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(KNID_FETCH_SDL "Download and build SDL3 if it is not installed" ON)
+option(KNID_BUILD_TESTS "Build headless tests" ON)
+
+# Core: ROM loading and verification. No SDL dependency, so it can be tested headless.
+add_library(knid_core STATIC
+    src/rom.cpp
+    src/sha1.cpp
+)
+target_include_directories(knid_core PUBLIC src)
+if(MSVC)
+    target_compile_options(knid_core PRIVATE /W4)
+else()
+    target_compile_options(knid_core PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# SDL3: use a system install if present (brew install sdl3, pacman -S sdl3, vcpkg), else fetch it.
+find_package(SDL3 CONFIG QUIET)
+if(NOT SDL3_FOUND AND KNID_FETCH_SDL)
+    include(FetchContent)
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.2.26
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(SDL3)
+endif()
+
+if(TARGET SDL3::SDL3)
+    add_executable(knid src/main.cpp)
+    target_link_libraries(knid PRIVATE knid_core SDL3::SDL3)
+else()
+    message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
+endif()
+
+if(KNID_BUILD_TESTS)
+    enable_testing()
+    add_executable(knid_romcheck tests/romcheck.cpp)
+    target_link_libraries(knid_romcheck PRIVATE knid_core)
+    add_test(NAME sha1_selftest COMMAND knid_romcheck --selftest)
+endif()

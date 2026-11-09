@@ -1,0 +1,23 @@
+# Never commit the game or anything derived from it
+*.gba
+*.GBA
+*.sav
+rom/
+build/
+out/
+.DS_Store
+.vscode/
+.idea/
+
+# Disassembler / analysis output derived from the ROM
+generated/
+generated/**/*.s
+generated/**/*.asm
+*.bin
+*.lz
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg
+Screenshot*
