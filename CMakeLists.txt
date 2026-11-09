@@ -27,6 +27,13 @@ else()
     target_compile_options(knid_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# Save import/export and backups (no SDL).
+add_library(knid_saves STATIC src/app/save_import.cpp)
+target_include_directories(knid_saves PUBLIC src)
+if(NOT MSVC)
+    target_compile_options(knid_saves PRIVATE -Wall -Wextra)
+endif()
+
 # Display post-processing (scaling layout, GBA colors, frame blending, overlays). No SDL.
 add_library(knid_display STATIC src/options/display.cpp)
 target_include_directories(knid_display PUBLIC src)
@@ -123,7 +130,7 @@ if(TARGET SDL3::SDL3)
         ${knid_font_cpp}
     )
     target_include_directories(knid_launcher PUBLIC src)
-    target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core imgui SDL3::SDL3)
+    target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core knid_saves imgui SDL3::SDL3)
     if(NOT MSVC)
         target_compile_options(knid_launcher PRIVATE -Wall -Wextra)
     endif()
@@ -146,6 +153,9 @@ if(KNID_BUILD_TESTS)
     add_executable(knid_display_test tests/display_test.cpp)
     target_link_libraries(knid_display_test PRIVATE knid_display)
     add_test(NAME display_options COMMAND knid_display_test)
+    add_executable(knid_save_test tests/save_import_test.cpp)
+    target_link_libraries(knid_save_test PRIVATE knid_saves)
+    add_test(NAME save_import COMMAND knid_save_test)
 endif()
 
 # Analysis tools. Their output is derived from the ROM and goes to generated/ (gitignored).

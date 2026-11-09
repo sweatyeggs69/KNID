@@ -17,6 +17,7 @@
 #include "app/bmp.h"
 #include "app/config.h"
 #include "app/platform.h"
+#include "app/save_import.h"
 #include "gba/gba.h"
 #include "rom.h"
 #include "sha1.h"
@@ -34,6 +35,7 @@ struct Options {
     bool test_pattern = false, headless = false, verbose = false, play = false;
     std::string create_shortcut;  // "applications" or "desktop"
     bool open_settings = false;
+    std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
 };
@@ -46,6 +48,8 @@ void usage() {
         "  --pref-dir <dir>   use another settings/saves folder\n"
         "  --select-rom <f>   act as if <f> was picked in the ROM dialog (testing)\n"
         "  --create-shortcut applications|desktop  create the --play shortcut and exit\n"
+        "  --import-save <f>  import a .sav/.srm from another emulator (backs up the current save)\n"
+        "  --export-save <f>  write the current save as a raw 32 KiB .sav\n"
         "  --test-pattern     show the SDL test pattern instead of running the game\n"
         "  --bios <file>      use your own GBA BIOS dump instead of the built-in BIOS HLE\n"
         "  --frames <n>       quit after n frames\n"
@@ -81,11 +85,43 @@ int main(int argc, char** argv) {
         else if (a == "--select-rom") opt.select_rom = next();
         else if (a == "--create-shortcut") opt.create_shortcut = next();
         else if (a == "--open-settings") opt.open_settings = true;
+        else if (a == "--import-save") opt.import_save = next();
+        else if (a == "--export-save") opt.export_save = next();
         else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else opt.rom = a;
     }
     bool gui = !opt.headless;
+
+    if (!opt.import_save.empty() || !opt.export_save.empty()) {
+        knid::Config config(opt.pref_dir);
+        std::filesystem::path rp = !opt.rom.empty() ? opt.rom : std::filesystem::path(config.get_string("rom.path"));
+        knid::VerifiedRom v = knid::verify_rom(rp);
+        if (!v.ok) {
+            fail(rp.empty() ? "No ROM is configured; choose it in the launcher first." : v.error, false);
+            return 1;
+        }
+        std::filesystem::path save = knid::save_path_for(config, v);
+        if (!opt.export_save.empty()) {
+            std::vector<std::uint8_t> data;
+            if (!knid::read_file(save, data)) { fail("There is no save to export yet.", false); return 1; }
+            data.resize(knid::kSramSize, 0xFF);
+            if (!knid::write_file_atomic(opt.export_save, data)) { fail("Could not write " + opt.export_save.string(), false); return 1; }
+            std::printf("Exported %s -> %s\n", save.string().c_str(), opt.export_save.string().c_str());
+        }
+        if (!opt.import_save.empty()) {
+            std::vector<std::uint8_t> bytes;
+            if (!knid::read_file(opt.import_save, bytes)) { fail("Could not read " + opt.import_save.string(), false); return 1; }
+            knid::NormalizedSave n = knid::normalize_save(bytes, opt.import_save.filename().string());
+            if (!n.ok) { fail(n.error, false); return 1; }
+            std::filesystem::path backup = knid::backup_save(save, save.parent_path() / "backups");
+            if (!knid::write_file_atomic(save, n.data)) { fail("Could not write " + save.string(), false); return 1; }
+            std::printf("Imported %s (%s) -> %s\n", opt.import_save.string().c_str(), n.format.c_str(), save.string().c_str());
+            if (!backup.empty()) std::printf("Previous save backed up to %s\n", backup.string().c_str());
+            if (!n.warning.empty()) std::printf("Note: %s\n", n.warning.c_str());
+        }
+        return 0;
+    }
 
     if (!opt.create_shortcut.empty()) {
         auto place = opt.create_shortcut == "desktop" ? knid::ShortcutPlace::Desktop : knid::ShortcutPlace::Applications;

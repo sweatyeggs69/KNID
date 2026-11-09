@@ -17,6 +17,7 @@
 #include "app/bmp.h"
 #include "app/config.h"
 #include "app/platform.h"
+#include "app/save_import.h"
 #include "app/theme.h"
 #include "gba/gba.h"
 #include "options/input.h"
@@ -67,6 +68,12 @@ private:
     void draw_first_run();
     void draw_launcher();
     void draw_game_tab(Config& config);
+    void draw_save_section();
+    fs::path current_save_path();
+    void prepare_import(const fs::path& file);
+    void apply_pending_save();
+    void export_save(const fs::path& dst);
+    void save_message(std::string text, bool error);
     void set_menu_open(bool open);
     void return_to_launcher();
     void draw_backdrop();
@@ -100,7 +107,19 @@ private:
     bool menu_was_open_ = false;
 
     std::mutex pick_mutex_;
-    std::optional<std::string> picked_rom_, picked_bios_;
+    std::optional<std::string> picked_rom_, picked_bios_, picked_import_, picked_export_;
+
+    // Save import / restore: data waiting for the user's confirmation.
+    struct PendingSave {
+        std::vector<std::uint8_t> data;
+        std::string source, format, warning;
+    };
+    std::optional<PendingSave> pending_save_;
+    bool open_save_confirm_ = false;
+    bool open_backup_list_ = false;
+    std::string save_msg_;
+    bool save_msg_error_ = false;
+    fs::path import_from_cli_;
     std::string pick_error_;
 };
 
@@ -456,6 +475,171 @@ void App::draw_launcher() {
     end_card();
 }
 
+void App::save_message(std::string text, bool error) {
+    save_msg_ = std::move(text);
+    save_msg_error_ = error;
+}
+
+fs::path App::current_save_path() { return rom_.ok ? save_path_for(config_, rom_) : fs::path(); }
+
+void App::prepare_import(const fs::path& file) {
+    std::vector<std::uint8_t> bytes;
+    if (!read_file(file, bytes)) {
+        save_message("Could not read " + file.string(), true);
+        return;
+    }
+    NormalizedSave n = normalize_save(bytes, file.filename().string());
+    if (!n.ok) {
+        save_message(n.error, true);
+        return;
+    }
+    pending_save_ = PendingSave{std::move(n.data), file.filename().string(), n.format, n.warning};
+    open_save_confirm_ = true;
+}
+
+void App::apply_pending_save() {
+    if (!pending_save_ || !rom_.ok) return;
+    fs::path save = current_save_path();
+    bool was_playing = game_ != nullptr;
+    if (game_) game_->flush_save();  // so the backup has the latest progress
+    fs::path backup = backup_save(save, save.parent_path() / "backups");
+    if (!write_file_atomic(save, pending_save_->data)) {
+        save_message("Could not write the save file " + save.string(), true);
+        pending_save_.reset();
+        return;
+    }
+    // The running game would overwrite the imported save on exit, so restart it from the new save.
+    game_.reset();
+    if (was_playing) {
+        game_ = make_gba(true);
+        game_paused_ = screen_ != Screen::Game;
+    }
+    save_message("Imported " + pending_save_->source + (backup.empty() ? "." : ". The previous save was backed up.") +
+                     (was_playing ? " The game was restarted." : ""),
+                 false);
+    pending_save_.reset();
+}
+
+void App::export_save(const fs::path& dst) {
+    fs::path save = current_save_path();
+    if (game_) game_->flush_save();
+    std::vector<std::uint8_t> data;
+    std::error_code ec;
+    if (save.empty() || !fs::exists(save, ec) || !read_file(save, data)) {
+        save_message("There is no save to export yet. Play the game first.", true);
+        return;
+    }
+    data.resize(kSramSize, 0xFF);
+    fs::path out = dst;
+    if (out.extension().empty()) out += ".sav";
+    if (!write_file_atomic(out, data)) {
+        save_message("Could not write " + out.string(), true);
+        return;
+    }
+    save_message("Exported to " + out.string() + " (raw 32 KiB, works in mGBA, VBA-M and RetroArch).", false);
+}
+
+void App::draw_save_section() {
+    const auto& c = theme::palette();
+    ImGui::SeparatorText("Saves");
+    fs::path saves = config_.pref_dir() / "saves";
+    ImGui::TextWrapped("%s", saves.string().c_str());
+    if (ImGui::Button("Show save folder")) {
+        std::error_code ec;
+        fs::create_directories(saves, ec);
+        SDL_OpenURL(("file://" + saves.string()).c_str());
+    }
+    ImGui::BeginDisabled(!rom_.ok);
+    ImGui::SameLine();
+    if (ImGui::Button("Import save...")) {
+        static const SDL_DialogFileFilter filters[] = {{"Game saves", "sav;srm;sa1;dsv"}, {"All files", "*"}};
+        SDL_ShowOpenFileDialog(
+            [](void* self, const char* const* files, int) {
+                auto* app = static_cast<App*>(self);
+                std::lock_guard<std::mutex> lock(app->pick_mutex_);
+                if (files && files[0]) app->picked_import_ = files[0];
+            },
+            this, window_, filters, 2, nullptr, false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Export save...")) {
+        static const SDL_DialogFileFilter filters[] = {{"Game save", "sav"}};
+        std::string def = (fs::path(rom_.path).parent_path() / "Kirby - Nightmare in Dream Land.sav").string();
+        SDL_ShowSaveFileDialog(
+            [](void* self, const char* const* files, int) {
+                auto* app = static_cast<App*>(self);
+                std::lock_guard<std::mutex> lock(app->pick_mutex_);
+                if (files && files[0]) app->picked_export_ = files[0];
+            },
+            this, window_, filters, 1, def.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Restore backup...")) open_backup_list_ = true;
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Imports .sav / .srm battery saves from mGBA, VBA-M, RetroArch and others.");
+    if (!save_msg_.empty()) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(save_msg_error_ ? c.bad : c.good, "%s", save_msg_.c_str());
+        ImGui::PopTextWrapPos();
+    }
+
+    if (open_save_confirm_) {
+        ImGui::OpenPopup("Replace your save?");
+        open_save_confirm_ = false;
+    }
+    if (ImGui::BeginPopupModal("Replace your save?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (pending_save_) {
+            ImGui::Text("Use %s as your save?", pending_save_->source.c_str());
+            ImGui::TextDisabled("%s", pending_save_->format.c_str());
+            ImGui::TextUnformatted("Your current save is backed up first (the last 10 are kept).");
+            if (game_)
+                ImGui::TextColored(c.yellow, "Importing restarts the game; unsaved progress is lost.");
+            if (!pending_save_->warning.empty()) ImGui::TextColored(c.yellow, "%s", pending_save_->warning.c_str());
+        }
+        ImGui::Dummy(ImVec2(0, 4));
+        if (ImGui::Button("Replace save")) {
+            apply_pending_save();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            pending_save_.reset();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (open_backup_list_) {
+        ImGui::OpenPopup("Restore a backup");
+        open_backup_list_ = false;
+    }
+    if (ImGui::BeginPopupModal("Restore a backup", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        fs::path save = current_save_path();
+        auto backups = list_backups(save.parent_path() / "backups", save.stem().string());
+        if (backups.empty()) ImGui::TextUnformatted("No backups yet. One is made every time a save is replaced.");
+        for (const auto& b : backups) {
+            // <sha1>-YYYYmmdd-HHMMSS.sav -> "YYYY-mm-dd HH:MM:SS"
+            std::string n = b.stem().string();
+            std::string stamp = n.size() >= 15 ? n.substr(n.size() - 15) : n;
+            std::string label = stamp.size() == 15 ? stamp.substr(0, 4) + "-" + stamp.substr(4, 2) + "-" +
+                                                         stamp.substr(6, 2) + " " + stamp.substr(9, 2) + ":" +
+                                                         stamp.substr(11, 2) + ":" + stamp.substr(13, 2)
+                                                   : n;
+            if (ImGui::Button(label.c_str(), ImVec2(320, 0))) {
+                std::vector<std::uint8_t> data;
+                if (read_file(b, data)) {
+                    data.resize(kSramSize, 0xFF);
+                    pending_save_ = PendingSave{std::move(data), "the backup from " + label, "backup", ""};
+                    open_save_confirm_ = true;
+                }
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+}
+
 void App::draw_game_tab(Config& config) {
     (void)config;
     const auto& c = theme::palette();
@@ -473,6 +657,8 @@ void App::draw_game_tab(Config& config) {
         ImGui::PopTextWrapPos();
     }
 
+    draw_save_section();
+
     ImGui::SeparatorText("BIOS (optional)");
     std::string bios = config_.get_string("bios.path");
     ImGui::TextWrapped("%s", bios.empty() ? "Built-in BIOS. No file is needed." : bios.c_str());
@@ -482,15 +668,6 @@ void App::draw_game_tab(Config& config) {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Takes effect when the game is restarted.");
-
-    ImGui::SeparatorText("Saves");
-    fs::path saves = config_.pref_dir() / "saves";
-    ImGui::TextWrapped("%s", saves.string().c_str());
-    if (ImGui::Button("Show save folder")) {
-        std::error_code ec;
-        fs::create_directories(saves, ec);
-        SDL_OpenURL(("file://" + saves.string()).c_str());
-    }
 
     ImGui::SeparatorText("Shortcut");
     ImGui::TextWrapped("Add a shortcut that starts the game directly, skipping this launcher.");
@@ -576,6 +753,12 @@ int App::run() {
         {
             std::lock_guard<std::mutex> lock(pick_mutex_);
             if (picked_rom_) { accept_rom(*picked_rom_); picked_rom_.reset(); }
+            if (picked_import_) {
+                prepare_import(*picked_import_);
+                picked_import_.reset();
+                if (pending_save_) options_menu_set_open(true);
+            }
+            if (picked_export_) { export_save(*picked_export_); picked_export_.reset(); }
             if (picked_bios_) {
                 config_.set_string("bios.path", *picked_bios_);
                 std::string err;
