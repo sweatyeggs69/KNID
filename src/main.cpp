@@ -1,5 +1,6 @@
-// KNID host shell: verifies the user's ROM, runs it on the knid_gba runtime and presents
-// video, audio and input through SDL3.
+// KNID entry point. With a window it starts the launcher app (src/app/app.cpp): first-run ROM
+// setup, themed menu, options and the game. --headless runs the core without a window for
+// scripted checks.
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
@@ -12,64 +13,25 @@
 #include <string>
 #include <vector>
 
+#include "app/app.h"
+#include "app/bmp.h"
 #include "app/config.h"
+#include "app/platform.h"
 #include "gba/gba.h"
-#include "options/input.h"
-#include "options/options_panel.h"
-#include "options/presenter.h"
 #include "rom.h"
 #include "sha1.h"
 
 namespace {
-constexpr int kGbaWidth = knid::gba::kScreenWidth;
-constexpr int kGbaHeight = knid::gba::kScreenHeight;
-constexpr int kDefaultScale = 4;
 constexpr const char* kRetailBiosSha1 = "300c20df6731a33952ded8c436f7f186d25d3492";
-constexpr double kFrameSeconds = double(knid::gba::kCyclesPerFrame) / knid::gba::kCpuHz;  // ~1/59.73
 
 void fail(const std::string& msg, bool gui) {
     std::fprintf(stderr, "knid: %s\n", msg.c_str());
     if (gui) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "KNID", msg.c_str(), nullptr);
 }
 
-void draw_test_pattern(std::array<std::uint16_t, kGbaWidth * kGbaHeight>& fb, std::uint32_t frame) {
-    for (int y = 0; y < kGbaHeight; ++y)
-        for (int x = 0; x < kGbaWidth; ++x) {
-            std::uint16_t r = std::uint16_t((x * 31) / (kGbaWidth - 1));
-            std::uint16_t g = std::uint16_t((y * 31) / (kGbaHeight - 1));
-            std::uint16_t b = std::uint16_t((frame / 2 + x + y) & 31);
-            fb[y * kGbaWidth + x] = std::uint16_t(r | (g << 5) | (b << 10));
-        }
-}
-
-// Writes a 24-bit BMP of a BGR555 frame (used by --dump-frame for headless checks).
-bool write_bmp(const std::string& path, const std::uint16_t* px) {
-    std::ofstream f(path, std::ios::binary);
-    if (!f) return false;
-    const int row = kGbaWidth * 3;
-    const std::uint32_t data = std::uint32_t(row * kGbaHeight), size = 54 + data;
-    std::uint8_t h[54] = {'B', 'M'};
-    auto put = [&](int off, std::uint32_t v, int n) { for (int i = 0; i < n; ++i) h[off + i] = std::uint8_t(v >> (8 * i)); };
-    put(2, size, 4); put(10, 54, 4); put(14, 40, 4); put(18, kGbaWidth, 4);
-    put(22, std::uint32_t(-kGbaHeight), 4); put(26, 1, 2); put(28, 24, 2); put(34, data, 4);
-    f.write(reinterpret_cast<char*>(h), 54);
-    std::vector<std::uint8_t> line(row);
-    for (int y = 0; y < kGbaHeight; ++y) {
-        for (int x = 0; x < kGbaWidth; ++x) {
-            std::uint16_t c = px[y * kGbaWidth + x];
-            auto ex = [](std::uint16_t v) { return std::uint8_t((v << 3) | (v >> 2)); };
-            line[x * 3 + 0] = ex((c >> 10) & 31);
-            line[x * 3 + 1] = ex((c >> 5) & 31);
-            line[x * 3 + 2] = ex(c & 31);
-        }
-        f.write(reinterpret_cast<char*>(line.data()), row);
-    }
-    return bool(f);
-}
-
 struct Options {
-    std::filesystem::path rom, bios, dump_frame, dump_audio, screenshot;
-    bool test_pattern = false, headless = false, verbose = false;
+    std::filesystem::path rom, bios, dump_frame, dump_audio, screenshot, pref_dir, select_rom;
+    bool test_pattern = false, headless = false, verbose = false, play = false;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
 };
@@ -77,6 +39,10 @@ struct Options {
 void usage() {
     std::printf(
         "usage: knid [rom.gba] [options]\n"
+        "  (no ROM)           open the launcher; a ROM path starts that ROM directly\n"
+        "  --play             start the ROM chosen in the launcher, skipping the menu\n"
+        "  --pref-dir <dir>   use another settings/saves folder\n"
+        "  --select-rom <f>   act as if <f> was picked in the ROM dialog (testing)\n"
         "  --test-pattern     show the SDL test pattern instead of running the game\n"
         "  --bios <file>      use your own GBA BIOS dump instead of the built-in BIOS HLE\n"
         "  --frames <n>       quit after n frames\n"
@@ -89,7 +55,7 @@ void usage() {
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
         "      Backspace/Right Shift = Select (F9 in game remaps, Shift+F9 resets)\n"
         "display: F1 help, F2 scaling, F3 aspect, F4 overlay, F5 overlay strength,\n"
-        "      F6 GBA colors, F7 frame blending, F11 fullscreen, Esc quit\n");
+        "      F6 GBA colors, F7 frame blending, F11 fullscreen, Esc back to the menu\n");
 }
 }  // namespace
 
@@ -107,6 +73,10 @@ int main(int argc, char** argv) {
         else if (a == "--dump-audio") opt.dump_audio = next();
         else if (a == "--verbose") opt.verbose = true;
         else if (a == "--screenshot") opt.screenshot = next();
+        else if (a == "--play") opt.play = true;
+        else if (a == "--pref-dir") opt.pref_dir = next();
+        else if (a == "--select-rom") opt.select_rom = next();
+        else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else opt.rom = a;
     }
@@ -118,8 +88,28 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (gui) {
+        knid::AppOptions app;
+        app.rom = opt.rom;
+        app.bios = opt.bios;
+        app.pref_dir = opt.pref_dir;
+        app.select_rom = opt.select_rom;
+        app.dump_frame = opt.dump_frame;
+        app.screenshot = opt.screenshot;
+        app.play = opt.play;
+        app.test_pattern = opt.test_pattern;
+        app.verbose = opt.verbose;
+        app.frames = opt.frames;
+        int rc = knid::run_app(app);
+        SDL_Quit();
+        return rc;
+    }
+
+    // ---- headless ----------------------------------------------------------------------------
+    knid::Config config(opt.pref_dir);
     const char* base = SDL_GetBasePath();
     std::filesystem::path rom_path = !opt.rom.empty() ? opt.rom : knid::find_default_rom(base ? base : ".");
+    if (rom_path.empty()) rom_path = config.get_string("rom.path");
     if (rom_path.empty()) {
         fail("No ROM found. Pass the path to your own Kirby: Nightmare in Dream Land dump, "
              "or put the .gba file in a 'rom' folder next to the game.", gui);
@@ -144,9 +134,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::filesystem::path save_path = rom_path;
-    save_path.replace_extension(".sav");
-    auto gba = std::make_unique<knid::gba::Gba>(rom.data, save_path);
+    knid::VerifiedRom verified;
+    verified.ok = true;
+    verified.path = rom_path;
+    verified.rom = rom;
+    auto gba = std::make_unique<knid::gba::Gba>(rom.data, knid::save_path_for(config, verified));
     gba->verbose = opt.verbose;
     if (!opt.bios.empty()) {
         std::ifstream f(opt.bios, std::ios::binary);
@@ -177,7 +169,7 @@ int main(int argc, char** argv) {
         p = comma + 1;
     }
 
-    if (!gui) {
+    {
         long frames = opt.frames < 0 ? 600 : opt.frames;
         size_t si = 0;
         std::vector<std::int16_t> audio, all_audio;
@@ -201,91 +193,10 @@ int main(int argc, char** argv) {
         double secs = double(SDL_GetTicksNS() - t0) / 1e9;
         std::printf("ran %ld frames in %.2f s (%.0f fps)\n%s\n", frames, secs, frames / secs,
                     gba->debug_state().c_str());
-        if (!opt.dump_frame.empty() && !write_bmp(opt.dump_frame.string(), gba->framebuffer()))
+        if (!opt.dump_frame.empty() && !knid::write_bmp(opt.dump_frame.string(), gba->framebuffer()))
             fail("could not write " + opt.dump_frame.string(), false);
         gba->flush_save();
         SDL_Quit();
         return 0;
     }
-
-    SDL_Window* window = SDL_CreateWindow("Kirby: Nightmare in Dream Land (KNID)",
-                                          kGbaWidth * kDefaultScale, kGbaHeight * kDefaultScale,
-                                          SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    SDL_Renderer* renderer = window ? SDL_CreateRenderer(window, nullptr) : nullptr;
-    if (!renderer) {
-        fail(std::string("Could not create window: ") + SDL_GetError(), gui);
-        SDL_Quit();
-        return 1;
-    }
-    knid::Config config;
-    // Owned here so they are released before the renderer and SDL shut down.
-    auto presenter_ptr = std::make_unique<knid::Presenter>(renderer, knid::settings_io(config));
-    auto controls_ptr = std::make_unique<knid::input::Manager>(knid::settings_io(config));
-    auto& presenter = *presenter_ptr;
-    auto& controls = *controls_ptr;
-    std::printf("Settings: %s\n", config.file().string().c_str());
-
-    SDL_AudioSpec spec{SDL_AUDIO_S16, 2, knid::gba::kAudioRate};
-    SDL_AudioStream* audio_stream =
-        SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
-    if (audio_stream) SDL_ResumeAudioStreamDevice(audio_stream);
-    else std::fprintf(stderr, "knid: no audio (%s)\n", SDL_GetError());
-
-    std::array<std::uint16_t, kGbaWidth * kGbaHeight> pattern{};
-    std::vector<std::int16_t> audio;
-    bool running = true;
-    long frame = 0;
-    Uint64 next_frame = SDL_GetTicksNS();
-    const Uint64 frame_ns = Uint64(kFrameSeconds * 1e9);
-    while (running) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_EVENT_QUIT) running = false;
-            if (controls.handle_event(e)) continue;  // captured by an F9 remap
-            if (e.type != SDL_EVENT_KEY_DOWN || e.key.repeat) continue;
-            if (e.key.key == SDLK_ESCAPE) running = false;
-            else if (e.key.key == SDLK_F11)
-                SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
-            else if (e.key.key == SDLK_F9 && (e.key.mod & SDL_KMOD_SHIFT)) controls.reset_to_defaults();
-            else if (e.key.key == SDLK_F9) controls.start_remap();
-            else presenter.handle_key(e.key);
-        }
-
-        const std::uint16_t* pixels;
-        if (opt.test_pattern) {
-            draw_test_pattern(pattern, std::uint32_t(frame));
-            pixels = pattern.data();
-        } else {
-            gba->set_keys(controls.poll());
-            gba->run_frame();
-            audio.clear();
-            gba->take_audio(audio);
-            // Keep audio latency bounded (~100 ms): drop samples if the device falls behind.
-            if (audio_stream && !audio.empty() &&
-                SDL_GetAudioStreamQueued(audio_stream) < int(knid::gba::kAudioRate / 10 * 4))
-                SDL_PutAudioStreamData(audio_stream, audio.data(), int(audio.size() * sizeof(std::int16_t)));
-            pixels = gba->framebuffer();
-        }
-        if (std::string m = controls.take_message(); !m.empty()) presenter.show_message(m);
-        if (!opt.screenshot.empty() && opt.frames >= 0 && frame + 1 == opt.frames)
-            presenter.capture_next(opt.screenshot.string());
-        presenter.present(pixels, controls.remap_prompt());
-
-        ++frame;
-        if (opt.frames >= 0 && frame >= opt.frames) running = false;
-        next_frame += frame_ns;
-        Uint64 now = SDL_GetTicksNS();
-        if (next_frame > now) SDL_DelayPrecise(next_frame - now);
-        else if (now - next_frame > frame_ns * 5) next_frame = now;  // fell behind: resync
-    }
-
-    if (!opt.dump_frame.empty()) write_bmp(opt.dump_frame.string(), gba->framebuffer());
-    gba.reset();  // flushes the save
-    controls_ptr.reset();
-    presenter_ptr.reset();
-    if (audio_stream) SDL_DestroyAudioStream(audio_stream);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    return 0;
 }

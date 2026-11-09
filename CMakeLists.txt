@@ -12,6 +12,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(KNID_FETCH_SDL "Download and build SDL3 if it is not installed" ON)
 option(KNID_BUILD_TESTS "Build headless tests" ON)
 option(KNID_BUILD_TOOLS "Build analysis tools (knid_disasm, needs Capstone)" ON)
+option(KNID_MACOS_BUNDLE "Build KNID.app (and the `dmg` target) on macOS" OFF)
+option(KNID_VENDOR_SDL "Always build SDL3 from source (static) instead of using a system install" OFF)
 
 # Core: ROM loading and verification. No SDL dependency, so it can be tested headless.
 add_library(knid_core STATIC
@@ -51,7 +53,9 @@ else()
 endif()
 
 # SDL3: use a system install if present (brew install sdl3, pacman -S sdl3, vcpkg), else fetch it.
-find_package(SDL3 CONFIG QUIET)
+if(NOT KNID_VENDOR_SDL)
+    find_package(SDL3 CONFIG QUIET)
+endif()
 if(NOT SDL3_FOUND AND KNID_FETCH_SDL)
     include(FetchContent)
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)
@@ -100,8 +104,36 @@ if(TARGET SDL3::SDL3)
     target_include_directories(knid_app PUBLIC src)
     target_link_libraries(knid_app PUBLIC SDL3::SDL3)
 
+    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. The Fredoka font
+    # (SIL OFL, assets/fonts) is compiled in.
+    set(knid_font_cpp "")
+    foreach(weight Medium SemiBold)
+        set(out "${CMAKE_CURRENT_BINARY_DIR}/font_fredoka_${weight}.cpp")
+        add_custom_command(OUTPUT "${out}"
+            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-${weight}.ttf
+                    -DOUTPUT=${out} -DSYMBOL=knid_font_fredoka_${weight} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+            DEPENDS assets/fonts/Fredoka-${weight}.ttf cmake/embed.cmake
+            COMMENT "Embedding Fredoka ${weight}")
+        list(APPEND knid_font_cpp "${out}")
+    endforeach()
+    add_library(knid_launcher STATIC
+        src/app/app.cpp
+        src/app/platform.cpp
+        src/app/theme.cpp
+        ${knid_font_cpp}
+    )
+    target_include_directories(knid_launcher PUBLIC src)
+    target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core imgui SDL3::SDL3)
+    if(NOT MSVC)
+        target_compile_options(knid_launcher PRIVATE -Wall -Wextra)
+    endif()
+
     add_executable(knid src/main.cpp)
-    target_link_libraries(knid PRIVATE knid_core knid_gba knid_app knid_options imgui SDL3::SDL3)
+    target_link_libraries(knid PRIVATE knid_launcher knid_core knid_gba knid_options imgui SDL3::SDL3)
+    if(APPLE AND KNID_MACOS_BUNDLE)
+        include(cmake/MacBundle.cmake)
+        knid_configure_bundle(knid)
+    endif()
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
 endif()
