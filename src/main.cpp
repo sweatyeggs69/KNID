@@ -28,6 +28,7 @@
 #include "gba/gba.h"
 #include "rom.h"
 #include "sha1.h"
+#include "update/updater.h"
 
 namespace {
 constexpr const char* kRetailBiosSha1 = "300c20df6731a33952ded8c436f7f186d25d3492";
@@ -48,6 +49,7 @@ struct Options {
     int window_w = 0, window_h = 0;
     std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
+    std::string update;  // "check" or "install" (--check-update / --update-now)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
 };
 
@@ -69,6 +71,8 @@ void usage() {
         "  --dump-frame <bmp> write the last frame to a BMP file on exit\n"
         "  --dump-audio <wav> write headless audio to a WAV file\n"
         "  --input <script>   scripted input, e.g. 300:8,310:0 (game frame:hex key mask); also in --play\n"
+        "  --check-update     ask GitHub for the latest release, print the result and exit\n"
+        "  --update-now       download, verify and install the latest release, then exit\n"
         "  --verbose          log unimplemented BIOS calls\n"
         "  --console          (Windows) open a console window for log output\n"
         "  --window WxH       initial window size, e.g. 1280x800\n"
@@ -126,6 +130,8 @@ int main(int argc, char** argv) {
         else if (a == "--state-script") opt.state_script = next();
         else if (a == "--mute") opt.mute = true;
         else if (a == "--window") std::sscanf(next().c_str(), "%dx%d", &opt.window_w, &opt.window_h);
+        else if (a == "--check-update") opt.update = "check";
+        else if (a == "--update-now") opt.update = "install";
         else if (a == "--silent-audio") opt.silent_audio = true;
         else if (a == "--import-save") opt.import_save = next_path();
         else if (a == "--export-save") opt.export_save = next_path();
@@ -162,6 +168,36 @@ int main(int argc, char** argv) {
             if (!backup.empty()) std::printf("Previous save backed up to %s\n", backup.string().c_str());
             if (!n.warning.empty()) std::printf("Note: %s\n", n.warning.c_str());
         }
+        return 0;
+    }
+
+    if (!opt.update.empty()) {
+        using knid::update::State;
+        knid::update::Updater u(KNID_VERSION);
+        auto wait = [&] {
+            while (u.busy()) SDL_Delay(50);
+            return u.status();
+        };
+        std::printf("KNID %s\n", KNID_VERSION);
+        u.check(true);
+        knid::update::Status st = wait();
+        if (st.state == State::Failed) { fail(st.message, false); return 1; }
+        if (st.state == State::UpToDate) {
+            std::printf("%s\n", st.latest.empty() ? st.message.c_str() : ("Up to date (latest release: " + st.latest + ").").c_str());
+            return 0;
+        }
+        std::printf("Update available: %s (%s)\n%s\n", st.latest.c_str(), st.asset.empty() ? "no download for this computer" : st.asset.c_str(),
+                    st.page_url.c_str());
+        if (!st.message.empty()) std::printf("%s\n", st.message.c_str());
+        if (!st.can_install) std::printf("%s\n", st.install_note.c_str());
+        if (opt.update != "install") return 0;
+        if (!st.can_install || !st.message.empty()) return 1;
+        u.download();
+        st = wait();
+        if (st.state != State::Ready) { fail(st.message, false); return 1; }
+        std::string err;
+        if (!u.install(&err)) { fail(err, false); return 1; }
+        std::printf("Installed KNID %s. Open KNID again to use it.\n", st.latest.c_str());
         return 0;
     }
 
