@@ -32,6 +32,8 @@ void fail(const std::string& msg, bool gui) {
 struct Options {
     std::filesystem::path rom, bios, dump_frame, dump_audio, screenshot, pref_dir, select_rom;
     bool test_pattern = false, headless = false, verbose = false, play = false;
+    std::string create_shortcut;  // "applications" or "desktop"
+    bool open_settings = false;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
 };
@@ -43,6 +45,7 @@ void usage() {
         "  --play             start the ROM chosen in the launcher, skipping the menu\n"
         "  --pref-dir <dir>   use another settings/saves folder\n"
         "  --select-rom <f>   act as if <f> was picked in the ROM dialog (testing)\n"
+        "  --create-shortcut applications|desktop  create the --play shortcut and exit\n"
         "  --test-pattern     show the SDL test pattern instead of running the game\n"
         "  --bios <file>      use your own GBA BIOS dump instead of the built-in BIOS HLE\n"
         "  --frames <n>       quit after n frames\n"
@@ -53,9 +56,9 @@ void usage() {
         "  --verbose          log unimplemented BIOS calls\n"
         "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
-        "      Backspace/Right Shift = Select (F9 in game remaps, Shift+F9 resets)\n"
-        "display: F1 help, F2 scaling, F3 aspect, F4 overlay, F5 overlay strength,\n"
-        "      F6 GBA colors, F7 frame blending, F11 fullscreen, Esc back to the menu\n");
+        "      Backspace/Right Shift = Select (remap them in the settings menu)\n"
+        "F1: settings menu (game, display, controls)   Esc: settings menu in game\n"
+        "F11: fullscreen\n");
 }
 }  // namespace
 
@@ -76,11 +79,20 @@ int main(int argc, char** argv) {
         else if (a == "--play") opt.play = true;
         else if (a == "--pref-dir") opt.pref_dir = next();
         else if (a == "--select-rom") opt.select_rom = next();
+        else if (a == "--create-shortcut") opt.create_shortcut = next();
+        else if (a == "--open-settings") opt.open_settings = true;
         else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else opt.rom = a;
     }
     bool gui = !opt.headless;
+
+    if (!opt.create_shortcut.empty()) {
+        auto place = opt.create_shortcut == "desktop" ? knid::ShortcutPlace::Desktop : knid::ShortcutPlace::Applications;
+        knid::ShortcutResult r = knid::create_shortcut(place);
+        std::printf("%s\n", r.message.c_str());
+        return r.ok ? 0 : 1;
+    }
 
     SDL_InitFlags flags = gui ? (SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD) : 0;
     if (!SDL_Init(flags)) {
@@ -100,6 +112,7 @@ int main(int argc, char** argv) {
         app.test_pattern = opt.test_pattern;
         app.verbose = opt.verbose;
         app.frames = opt.frames;
+        app.open_settings = opt.open_settings;
         int rc = knid::run_app(app);
         SDL_Quit();
         return rc;

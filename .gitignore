@@ -4,6 +4,7 @@
 *.sav
 rom/
 build/
+build-*/
 out/
 .DS_Store
 .vscode/
@@ -21,3 +22,6 @@ generated/**/*.asm
 *.jpg
 *.jpeg
 Screenshot*
+
+# Milestone screenshots (may show ROM-derived art)
+screenshots/

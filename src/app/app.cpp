@@ -48,7 +48,7 @@ public:
     int run();
 
 private:
-    enum class Screen { FirstRun, Launcher, Options, Game };
+    enum class Screen { FirstRun, Launcher, Game };
 
     bool init_window();
     void shutdown();
@@ -65,9 +65,12 @@ private:
     void draw_ui();
     void draw_first_run();
     void draw_launcher();
-    void draw_options();
+    void draw_game_tab(Config& config);
+    void set_menu_open(bool open);
+    void return_to_launcher();
     void draw_backdrop();
     void begin_card(const char* id, ImVec2 size);
+    void capture_window(const std::string& path);
     void end_card();
 
     AppOptions opt_;
@@ -93,6 +96,7 @@ private:
     bool running_ = true;
     bool shortcut_popup_ = false;
     double game_started_at_ = 0;
+    bool menu_was_open_ = false;
 
     std::mutex pick_mutex_;
     std::optional<std::string> picked_rom_, picked_bios_;
@@ -125,6 +129,7 @@ bool App::init_window() {
     theme::apply(SDL_GetWindowPixelDensity(window_));
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
+    register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
     SDL_ShowWindow(window_);
     return true;
 }
@@ -236,41 +241,49 @@ void App::start_game() {
     if (audio_) SDL_ClearAudioStream(audio_);
     presenter_->reload();
     controls_->reload();
-    presenter_->show_message("Esc: back to the menu", 3.0);
+    presenter_->show_message("F1 or Esc: settings menu", 3.0);
+    set_options_menu_quit_handler([this] { return_to_launcher(); });
 }
 
 // ---- main loop -----------------------------------------------------------------------------
 
+void App::set_menu_open(bool open) {
+    options_menu_set_open(open);
+}
+
+void App::return_to_launcher() {
+    options_menu_set_open(false);
+    game_paused_ = true;
+    if (game_) game_->flush_save();
+    set_options_menu_quit_handler({});
+    screen_ = Screen::Launcher;
+}
+
 void App::handle_event(const SDL_Event& e) {
     if (e.type == SDL_EVENT_QUIT) { running_ = false; return; }
-    if (screen_ == Screen::Game) {
-        if (controls_->handle_event(e)) return;  // captured by a control remap
-        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_ESCAPE) {
-            if (opt_.test_pattern && !rom_.ok) { running_ = false; return; }
-            game_paused_ = true;
-            if (game_) game_->flush_save();
-            screen_ = Screen::Launcher;
-            return;
-        }
-        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
-            if (e.key.key == SDLK_F9 && (e.key.mod & SDL_KMOD_SHIFT)) controls_->reset_to_defaults();
-            else if (e.key.key == SDLK_F9) controls_->start_remap();
-            else presenter_->handle_key(e.key);
-        }
-        return;
-    }
-    if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F11) {
+    bool key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat;
+    if (key && e.key.key == SDLK_F11) {
         SDL_SetWindowFullscreen(window_, !(SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN));
         return;
     }
-    if (screen_ == Screen::Options) {
+    if (options_menu_open()) {
+        // The menu owns input: rebinding captures first, then ImGui. Nothing reaches the game.
         if (options_panel_handle_event(e)) return;
-    } else {
-        controls_->handle_event(e);  // gamepad hotplug
+        if (key && (e.key.key == SDLK_F1 || e.key.key == SDLK_ESCAPE)) { set_menu_open(false); return; }
+        ImGui_ImplSDL3_ProcessEvent(&e);
+        return;
     }
+    if (key && e.key.key == SDLK_F1 && screen_ != Screen::FirstRun) { set_menu_open(true); return; }
+    if (screen_ == Screen::Game) {
+        if (controls_->handle_event(e)) return;  // gamepad hotplug / remap capture
+        if (key && e.key.key == SDLK_ESCAPE) {
+            if (opt_.test_pattern && !rom_.ok) { running_ = false; return; }
+            set_menu_open(true);
+        }
+        return;
+    }
+    controls_->handle_event(e);  // gamepad hotplug
     ImGui_ImplSDL3_ProcessEvent(&e);
-    if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_ESCAPE && screen_ == Screen::Options)
-        screen_ = Screen::Launcher;
 }
 
 void App::update_emulation() {
@@ -279,6 +292,8 @@ void App::update_emulation() {
     if (screen_ == Screen::Game && opt_.test_pattern) {
         draw_test_pattern(pattern_, std::uint32_t(frames_));
         pixels = pattern_.data();
+    } else if (screen_ == Screen::Game && game_ && options_menu_open()) {
+        pixels = game_->framebuffer();  // paused under the settings menu
     } else if (screen_ == Screen::Game && game_) {
         game_->set_keys(controls_->poll());
         game_->run_frame();
@@ -311,6 +326,14 @@ void App::draw_backdrop() {
     SDL_SetTextureScaleMode(frame_tex_, SDL_SCALEMODE_LINEAR);
     SDL_RenderTexture(renderer_, frame_tex_, nullptr, &dst);
     SDL_SetTextureColorMod(frame_tex_, 255, 255, 255);
+}
+
+void App::capture_window(const std::string& path) {
+    SDL_SetRenderScale(renderer_, 1, 1);
+    if (SDL_Surface* shot = SDL_RenderReadPixels(renderer_, nullptr)) {
+        SDL_SaveBMP(shot, path.c_str());
+        SDL_DestroySurface(shot);
+    }
 }
 
 void App::begin_card(const char* id, ImVec2 size) {
@@ -387,27 +410,17 @@ void App::draw_launcher() {
         if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
     }
     float half = (bw - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-    if (theme::big_button("Options", ImVec2(half, 46), false)) screen_ = Screen::Options;
+    if (theme::big_button("Settings", ImVec2(half, 46), false)) set_menu_open(true);
     ImGui::SameLine();
     if (theme::big_button("Create Shortcut", ImVec2(half, 46), false)) {
         shortcut_popup_ = true;
         ImGui::OpenPopup("Create a shortcut");
     }
-    if (theme::big_button("Change ROM...", ImVec2(half, 46), false)) open_rom_dialog();
-    ImGui::SameLine();
-    if (theme::big_button("Quit", ImVec2(half, 46), false)) running_ = false;
+    if (theme::big_button("Quit", ImVec2(bw, 46), false)) running_ = false;
 
-    // BIOS (optional).
     ImGui::Dummy(ImVec2(0, 4));
     ImGui::PushFont(theme::font_small());
-    std::string bios = config_.get_string("bios.path");
-    ImGui::TextColored(c.text_dim, "BIOS: %s", bios.empty() ? "built-in (no file needed)"
-                                                            : fs::path(bios).filename().string().c_str());
-    ImGui::SameLine();
-    if (ImGui::SmallButton(bios.empty() ? "Use a BIOS file..." : "Use built-in")) {
-        if (bios.empty()) open_bios_dialog();
-        else config_.erase("bios.path");
-    }
+    theme::centered_text("F1: settings (ROM, BIOS, saves, display, controls)", nullptr, c.text_dim);
     if (!rom_error_.empty()) ImGui::TextColored(c.bad, "%s", rom_error_.c_str());
     if (!info_.empty() && ImGui::GetTime() < info_until_) {
         ImGui::PushTextWrapPos(0);
@@ -441,18 +454,64 @@ void App::draw_launcher() {
     end_card();
 }
 
-void App::draw_options() {
-    ImVec2 ds = ImGui::GetIO().DisplaySize;
-    begin_card("##options", ImVec2(std::min(760.0f, ds.x - 40), std::min(560.0f, ds.y - 40)));
-    theme::centered_text("Options", theme::font_title(), theme::palette().pink);
-    ImGui::Separator();
-    float footer = 64;
-    ImGui::BeginChild("##options_body", ImVec2(0, -footer), ImGuiChildFlags_None);
-    draw_options_panel(config_);
-    ImGui::EndChild();
-    if (theme::big_button("Back", ImVec2(ImGui::GetContentRegionAvail().x, 46), false))
-        screen_ = Screen::Launcher;
-    end_card();
+void App::draw_game_tab(Config& config) {
+    (void)config;
+    const auto& c = theme::palette();
+    ImGui::SeparatorText("Game ROM");
+    if (rom_.ok) {
+        ImGui::TextColored(c.good, "%s [%s] verified", rom_.rom.header.title.c_str(), rom_.rom.header.game_code.c_str());
+        ImGui::TextWrapped("%s", rom_.path.string().c_str());
+    } else {
+        ImGui::TextColored(c.bad, "No ROM chosen");
+    }
+    if (ImGui::Button("Change ROM...")) open_rom_dialog();
+    if (!rom_error_.empty()) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(c.bad, "%s", rom_error_.c_str());
+        ImGui::PopTextWrapPos();
+    }
+
+    ImGui::SeparatorText("BIOS (optional)");
+    std::string bios = config_.get_string("bios.path");
+    ImGui::TextWrapped("%s", bios.empty() ? "Built-in BIOS. No file is needed." : bios.c_str());
+    if (ImGui::Button(bios.empty() ? "Use a BIOS file..." : "Use the built-in BIOS")) {
+        if (bios.empty()) open_bios_dialog();
+        else config_.erase("bios.path");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Takes effect when the game is restarted.");
+
+    ImGui::SeparatorText("Saves");
+    fs::path saves = config_.pref_dir() / "saves";
+    ImGui::TextWrapped("%s", saves.string().c_str());
+    if (ImGui::Button("Show save folder")) {
+        std::error_code ec;
+        fs::create_directories(saves, ec);
+        SDL_OpenURL(("file://" + saves.string()).c_str());
+    }
+
+    ImGui::SeparatorText("Shortcut");
+    ImGui::TextWrapped("Add a shortcut that starts the game directly, skipping this launcher.");
+#if defined(__APPLE__)
+    const char* apps = "Add to Applications";
+#elif defined(_WIN32)
+    const char* apps = "Add to Start menu";
+#else
+    const char* apps = "Add to applications menu";
+#endif
+    auto make = [&](ShortcutPlace place) {
+        ShortcutResult r = create_shortcut(place);
+        info_ = r.message;
+        info_until_ = ImGui::GetTime() + 10;
+    };
+    if (ImGui::Button(apps)) make(ShortcutPlace::Applications);
+    ImGui::SameLine();
+    if (ImGui::Button("Add to Desktop")) make(ShortcutPlace::Desktop);
+    if (!info_.empty() && ImGui::GetTime() < info_until_) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(c.yellow, "%s", info_.c_str());
+        ImGui::PopTextWrapPos();
+    }
 }
 
 void App::draw_ui() {
@@ -472,10 +531,10 @@ void App::draw_ui() {
     }
     switch (screen_) {
         case Screen::FirstRun: draw_first_run(); break;
-        case Screen::Launcher: draw_launcher(); break;
-        case Screen::Options: draw_options(); break;
+        case Screen::Launcher: if (!options_menu_open()) draw_launcher(); break;
         case Screen::Game: break;
     }
+    if (options_menu_open()) draw_options_menu(config_);
 }
 
 int App::run() {
@@ -501,6 +560,7 @@ int App::run() {
         screen_ = rom_.ok ? Screen::Launcher : Screen::FirstRun;
         start_attract();
     }
+    if (opt_.open_settings && screen_ != Screen::FirstRun) set_menu_open(true);
     if (!opt_.select_rom.empty()) {
         std::lock_guard<std::mutex> lock(pick_mutex_);
         picked_rom_ = opt_.select_rom.string();
@@ -530,7 +590,15 @@ int App::run() {
 
         update_emulation();
 
-        if (screen_ == Screen::Game) {
+        bool menu = options_menu_open();
+        if (menu_was_open_ && !menu) {  // apply what changed in the settings menu
+            presenter_->reload();
+            controls_->reload();
+            if (audio_) SDL_ClearAudioStream(audio_);
+        }
+        menu_was_open_ = menu;
+
+        if (screen_ == Screen::Game && !menu) {
             const std::uint16_t* px = opt_.test_pattern ? pattern_.data() : game_->framebuffer();
             if (!opt_.screenshot.empty() && opt_.frames >= 0 && frames_ + 1 == opt_.frames)
                 presenter_->capture_next(opt_.screenshot.string());
@@ -545,11 +613,19 @@ int App::run() {
             ImGui::Render();
             ImGuiIO& io = ImGui::GetIO();
             SDL_SetRenderScale(renderer_, 1, 1);
-            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
-            SDL_RenderClear(renderer_);
-            draw_backdrop();
+            if (screen_ == Screen::Game) {
+                // Paused game under the settings menu.
+                const std::uint16_t* px = opt_.test_pattern ? pattern_.data() : game_->framebuffer();
+                presenter_->draw(px, gba::kScreenWidth, controls_->remap_prompt());
+            } else {
+                SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
+                SDL_RenderClear(renderer_);
+                draw_backdrop();
+            }
             SDL_SetRenderScale(renderer_, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
             ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer_);
+            if (!opt_.screenshot.empty() && opt_.frames >= 0 && frames_ + 1 == opt_.frames)
+                capture_window(opt_.screenshot.string());
             SDL_RenderPresent(renderer_);
         }
 
