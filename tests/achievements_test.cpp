@@ -8,6 +8,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -95,7 +96,8 @@ int main() {
         data[1] = char(0xCD);
         std::ofstream(sav, std::ios::binary).write(data.data(), std::streamsize(data.size()));
     }
-    Gba gba(std::vector<std::uint8_t>(0x1000, 0), sav);
+    auto machine = std::make_unique<Gba>(std::vector<std::uint8_t>(0x1000, 0), sav);  // too big for a Windows stack
+    Gba& gba = *machine;
     g_gba = &gba;
 
     std::uint8_t b[4] = {};
