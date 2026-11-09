@@ -16,11 +16,16 @@ int failures = 0;
 int main() {
     using namespace knid::states;
     namespace fs = std::filesystem;
-    // Decision table.
-    CHECK(choose_start(true, true, false) == StartMode::ResumeAuto);
-    CHECK(choose_start(true, true, true) == StartMode::TitleScreen);    // Shift bypass
-    CHECK(choose_start(true, false, false) == StartMode::TitleScreen);  // no usable Auto state
-    CHECK(choose_start(false, true, false) == StartMode::TitleScreen);  // option off
+    // Startup decision table: rom_ok, --play, autoload, auto exists, auto usable, shift.
+    CHECK(choose_startup(true, false, false, true, true, false) == Startup::Launcher);
+    CHECK(choose_startup(true, true, false, true, true, false) == Startup::BootGame);       // --play only
+    CHECK(choose_startup(true, false, true, true, true, false) == Startup::ResumeAuto);     // autoload
+    CHECK(choose_startup(true, true, true, true, true, false) == Startup::ResumeAuto);      // shortcut + autoload
+    CHECK(choose_startup(true, false, true, false, false, false) == Startup::BootGame);     // no Auto state yet
+    CHECK(choose_startup(true, false, true, true, false, false) == Startup::LauncherWithError);  // unusable
+    CHECK(choose_startup(true, false, true, true, true, true) == Startup::Launcher);        // Shift bypass
+    CHECK(choose_startup(false, false, true, true, true, false) == Startup::LauncherWithError);  // bad ROM
+    CHECK(choose_startup(false, false, false, false, false, false) == Startup::Launcher);
 
     fs::path dir = fs::temp_directory_path() / "knid_states_test";
     fs::remove_all(dir);
@@ -44,7 +49,8 @@ int main() {
         Store foreign(dir / "states", "ffffffffffffffffffffffffffffffffffffffff", dir / "saves" / "x.sav");
         CHECK(!foreign.info(kAutoSlot).error.empty());
         bool usable = foreign.info(kAutoSlot).exists && foreign.info(kAutoSlot).error.empty();
-        CHECK(choose_start(true, usable, false) == StartMode::TitleScreen);
+        CHECK(choose_startup(true, false, true, foreign.info(kAutoSlot).exists, usable, false) ==
+              Startup::LauncherWithError);
     }
     {
         // A damaged Auto state is reported as unusable.

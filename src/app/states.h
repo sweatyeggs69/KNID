@@ -67,11 +67,20 @@ private:
     std::optional<std::vector<std::uint8_t>> undo_;
 };
 
-// What Play / --play / the shortcut should do. With "Auto-load save state" (states.autoload) on
-// and a usable Auto state, the game resumes from it; holding Shift bypasses that once.
-enum class StartMode { TitleScreen, ResumeAuto };
-inline StartMode choose_start(bool autoload, bool auto_usable, bool bypass) {
-    return autoload && auto_usable && !bypass ? StartMode::ResumeAuto : StartMode::TitleScreen;
+// What to do when the app starts. With "Auto-load save state on launch" (states.autoload) on,
+// opening KNID goes straight into the game: into the Auto state if there is one, otherwise a
+// normal boot. An Auto state that can't be used (other ROM, other build, damaged) shows the
+// launcher with an explanation. Shift held at launch shows the launcher once.
+enum class Startup { Launcher, BootGame, ResumeAuto, LauncherWithError };
+inline Startup choose_startup(bool rom_ok, bool play_flag, bool autoload, bool auto_exists, bool auto_usable,
+                              bool shift) {
+    if (!rom_ok) return (play_flag || autoload) ? Startup::LauncherWithError : Startup::Launcher;
+    if (shift) return Startup::Launcher;
+    if (autoload) {
+        if (!auto_exists) return Startup::BootGame;
+        return auto_usable ? Startup::ResumeAuto : Startup::LauncherWithError;
+    }
+    return play_flag ? Startup::BootGame : Startup::Launcher;
 }
 
 // Hotkey actions (F5 quick save, F8 quick load, F6/F7 previous/next slot by default). The app

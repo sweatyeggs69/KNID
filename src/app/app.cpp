@@ -79,7 +79,8 @@ private:
     bool save_slot(int slot);
     bool load_slot(int slot);
     void auto_save();
-    void play_or_resume(bool bypass);
+    void startup();
+    std::string hotkey_hint(bool brief) const;
     void show_toast(const std::string& text, int slot, toast::Style style = toast::Style::Success);
     void draw_states_tab();
     std::unique_ptr<states::Store> store_;
@@ -203,6 +204,7 @@ bool App::init_window() {
     states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) save_slot(slot_); },
                          [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
                          [this](int d) {
+                             if (!game_ || screen_ != Screen::Game) return;
                              slot_ = (slot_ - 1 + d + states::kSlots * 4) % states::kSlots + 1;
                              config_.set_int("states.slot", slot_);
                              ensure_store();
@@ -368,10 +370,6 @@ void App::handle_event(const SDL_Event& e) {
     if (key && e.key.key == SDLK_F1 && screen_ != Screen::FirstRun) { set_menu_open(true); return; }
     if (screen_ == Screen::Game) {
         if (controls_->handle_event(e)) return;  // gamepad hotplug / remap capture
-        if (key && e.key.key == SDLK_F5) { states::quick_save(); return; }
-        if (key && e.key.key == SDLK_F8) { states::quick_load(); return; }
-        if (key && e.key.key == SDLK_F6) { states::slot_step(-1); return; }
-        if (key && e.key.key == SDLK_F7) { states::slot_step(+1); return; }
         if (key && e.key.key == SDLK_ESCAPE) {
             if (opt_.test_pattern && !rom_.ok) { running_ = false; return; }
             set_menu_open(true);
@@ -551,13 +549,9 @@ void App::draw_launcher() {
             game_.reset();
             start_game();
         }
-    } else if (has_auto && config_.get_bool("states.autoload", false)) {
-        // Auto-load on: Continue is the main action (Shift+click starts from the title instead).
-        if (theme::big_button("Continue", ImVec2(bw, 58))) play_or_resume(ImGui::GetIO().KeyShift);
-        if (theme::big_button("Start from title screen", ImVec2(bw, 46), false)) start_game();
     } else if (has_auto) {
-        if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
-        if (theme::big_button("Continue from Auto save state", ImVec2(bw, 46), false)) load_slot(states::kAutoSlot);
+        if (theme::big_button("Continue", ImVec2(bw, 58))) load_slot(states::kAutoSlot);
+        if (theme::big_button("Play from the title screen", ImVec2(bw, 46), false)) start_game();
     } else {
         if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
     }
@@ -621,8 +615,22 @@ SDL_Texture* App::thumb_texture(int slot) {
     return thumb_tex_[k];
 }
 
+// The user's current save state shortcuts (rebindable in Controls). brief: first binding only.
+std::string App::hotkey_hint(bool brief) const {
+    auto d = [&](input::Hotkey h) {
+        std::string s = controls_ ? controls_->describe(h) : std::string();
+        if (brief) s = s.substr(0, s.find(','));
+        return s.empty() ? std::string("unbound") : s;
+    };
+    if (brief)
+        return d(input::Hotkey::SaveState) + " save  " + d(input::Hotkey::LoadState) + " load  " +
+               d(input::Hotkey::SlotPrev) + "/" + d(input::Hotkey::SlotNext) + " slot";
+    return "save " + d(input::Hotkey::SaveState) + "; load " + d(input::Hotkey::LoadState) + "; previous slot " +
+           d(input::Hotkey::SlotPrev) + "; next slot " + d(input::Hotkey::SlotNext);
+}
+
 void App::show_toast(const std::string& text, int slot, toast::Style style) {
-    std::string body = "F5 save  F8 load  F6/F7 slot (" + states::slot_name(slot_) + ")";
+    std::string body = hotkey_hint(true) + "  (" + states::slot_name(slot_) + ")";
     std::vector<std::uint8_t> rgba;
     if (slot >= 0 && store_) {
         const states::SlotInfo& i = store_->info(slot);
@@ -686,22 +694,39 @@ bool App::load_slot(int slot) {
     return true;
 }
 
-// Play, --play and the shortcut: resume from the Auto state when auto-load is on, otherwise boot.
-// If the Auto state can't be used, fall back to a normal boot and say why.
-void App::play_or_resume(bool bypass) {
-    ensure_store();
-    const states::SlotInfo* auto_info = store_ ? &store_->info(states::kAutoSlot) : nullptr;
-    bool usable = auto_info && auto_info->exists && auto_info->error.empty();
-    states::StartMode mode = states::choose_start(config_.get_bool("states.autoload", false), usable, bypass);
-    if (mode == states::StartMode::ResumeAuto && load_slot(states::kAutoSlot)) return;
-    std::string why = auto_info && auto_info->exists && config_.get_bool("states.autoload", false) && !bypass
-                          ? (auto_info->error.empty() ? states_msg_ : auto_info->error)
-                          : std::string();
-    game_.reset();
-    start_game();
-    if (!why.empty())
-        toast::show("Couldn't resume from the Auto state", why + " Starting normally.", nullptr, 0, 0, 4500,
-                    toast::Style::Warning);
+// Startup (no ROM argument): launcher, or straight into the game for --play / the shortcut and
+// for "Auto-load save state on launch". Never shows a launcher frame when going into the game.
+void App::startup() {
+    load_configured_rom();
+    SDL_PumpEvents();  // so a Shift held while launching is seen
+    bool shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
+    bool autoload = config_.get_bool("states.autoload", false);
+    bool exists = false, usable = false;
+    std::string why;
+    if (rom_.ok) {
+        ensure_store();
+        const states::SlotInfo& a = store_->info(states::kAutoSlot);
+        exists = a.exists;
+        usable = a.exists && a.error.empty();
+        why = a.error;
+    } else {
+        why = rom_error_.empty() ? "No ROM is chosen yet." : rom_error_;
+    }
+    switch (states::choose_startup(rom_.ok, opt_.play, autoload, exists, usable, shift)) {
+        case states::Startup::ResumeAuto:
+            if (load_slot(states::kAutoSlot)) return;
+            why = states_msg_;
+            break;
+        case states::Startup::BootGame:
+            start_game();
+            return;
+        case states::Startup::LauncherWithError:
+            break;
+        case states::Startup::Launcher:
+            return;
+    }
+    toast::show(autoload ? "Couldn't auto-load the save state" : "Couldn't start the game", why, nullptr, 0, 0,
+                6000, toast::Style::Warning);
 }
 
 void App::auto_save() {
@@ -720,11 +745,7 @@ void App::draw_states_tab() {
         ImGui::TextUnformatted("Choose your ROM first (Game tab).");
         return;
     }
-    bool autoload = config_.get_bool("states.autoload", false);
-    if (ImGui::Checkbox("Auto-load save state", &autoload)) config_.set_bool("states.autoload", autoload);
-    ImGui::SameLine();
-    ImGui::TextDisabled("Play and shortcuts continue from the Auto state (hold Shift to start normally).");
-    ImGui::TextWrapped("Quick keys in game: F5 save, F8 load, F6/F7 change slot. Current: %s.",
+    ImGui::TextWrapped("Shortcuts in game: %s. Current: %s. Change them in Controls.", hotkey_hint(false).c_str(),
                        states::slot_name(slot_).c_str());
     ImGui::BeginDisabled(!store_->can_undo_load() || !game_);
     if (ImGui::Button("Undo last load")) {
@@ -1049,6 +1070,12 @@ void App::draw_game_tab(Config& config) {
         ImGui::PopTextWrapPos();
     }
 
+    ImGui::SeparatorText("Startup");
+    bool autoload = config_.get_bool("states.autoload", false);
+    if (ImGui::Checkbox("Auto-load save state on launch", &autoload)) config_.set_bool("states.autoload", autoload);
+    ImGui::TextDisabled("Opening KNID goes straight back to where you left off (the Auto save state).");
+    ImGui::TextDisabled("Hold Shift while opening KNID to see this menu instead.");
+
     draw_save_section();
 
     ImGui::SeparatorText("BIOS (optional)");
@@ -1201,11 +1228,7 @@ int App::run() {
             rom_error_ = v.error;
         }
     } else {
-        load_configured_rom();
-        if (rom_.ok && opt_.play) {
-            SDL_PumpEvents();  // so a Shift held while launching is seen
-            play_or_resume((SDL_GetModState() & SDL_KMOD_SHIFT) != 0);
-        }
+        startup();
     }
     if (opt_.test_pattern && screen_ != Screen::Game) start_game();
     if (screen_ != Screen::Game) {
