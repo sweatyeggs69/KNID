@@ -129,7 +129,7 @@ void draw() {
         ImGui::SetNextWindowBgAlpha(0.94f * alpha);
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 12));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
         ImGui::Begin(id, nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
@@ -137,10 +137,6 @@ void draw() {
         // Always above other windows (e.g. the F1 menu) without taking focus or input.
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         ImDrawList* dl = ImGui::GetWindowDrawList();
-        ImVec2 wp = ImGui::GetWindowPos();
-        // Accent stripe on the left edge.
-        dl->AddRectFilled(ImVec2(wp.x, wp.y + 10), ImVec2(wp.x + 4, wp.y + ImGui::GetWindowSize().y - 10),
-                          theme::u32(accent(t.style), alpha), 2.0f);
         if (t.tex) {
             float hgt = 80.0f, wdt = hgt * float(t.w) / float(t.h);
             if (wdt > 140.0f) { wdt = 140.0f; hgt = wdt * float(t.h) / float(t.w); }

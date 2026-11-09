@@ -24,8 +24,7 @@ option(KNID_PACKAGE "Add packaging targets (Windows zip, Linux AppDir install)" 
 
 # App icon renderer (original procedural artwork); used for the macOS .icns, Windows .ico and
 # the Linux icon.
-add_executable(knid_icon tools/knid_icon/main.cpp src/app/icon_art.cpp)
-target_include_directories(knid_icon PRIVATE src)
+add_executable(knid_icon tools/knid_icon/main.cpp)
 
 # Core: ROM loading and verification. No SDL dependency, so it can be tested headless.
 add_library(knid_core STATIC
@@ -140,6 +139,29 @@ if(TARGET SDL3::SDL3)
     target_include_directories(imgui PUBLIC ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends)
     target_link_libraries(imgui PUBLIC SDL3::SDL3)
 
+    # RetroAchievements: rcheevos (MIT) for the rc_client runtime, and stb_image (public domain)
+    # to decode PNG badges. Both pinned; built from source as plain C/C++ files.
+    FetchContent_Declare(rcheevos
+        GIT_REPOSITORY https://github.com/RetroAchievements/rcheevos.git
+        GIT_TAG v12.5.0
+        GIT_SHALLOW TRUE)
+    FetchContent_Declare(stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG 4e9b368bfc071e97206ea5c6adba68dd0cbf8897)
+    FetchContent_MakeAvailable(rcheevos stb)
+    set(rc ${rcheevos_SOURCE_DIR}/src)
+    add_library(rcheevos STATIC
+        ${rc}/rc_client.c ${rc}/rc_compat.c ${rc}/rc_util.c ${rc}/rc_version.c
+        ${rc}/rapi/rc_api_common.c ${rc}/rapi/rc_api_info.c ${rc}/rapi/rc_api_runtime.c ${rc}/rapi/rc_api_user.c
+        ${rc}/rcheevos/alloc.c ${rc}/rcheevos/condition.c ${rc}/rcheevos/condset.c ${rc}/rcheevos/consoleinfo.c
+        ${rc}/rcheevos/format.c ${rc}/rcheevos/lboard.c ${rc}/rcheevos/memref.c ${rc}/rcheevos/operand.c
+        ${rc}/rcheevos/rc_validate.c ${rc}/rcheevos/richpresence.c ${rc}/rcheevos/runtime.c
+        ${rc}/rcheevos/runtime_progress.c ${rc}/rcheevos/trigger.c ${rc}/rcheevos/value.c
+        ${rc}/rhash/md5.c)
+    target_include_directories(rcheevos PUBLIC ${rcheevos_SOURCE_DIR}/include ${rc})
+    target_include_directories(rcheevos SYSTEM PUBLIC ${stb_SOURCE_DIR})
+    set_target_properties(rcheevos PROPERTIES C_STANDARD 99)
+
     # Options panel (owned by the options work; display.* / input.* settings).
     add_library(knid_options STATIC
         src/options/options_panel.cpp
@@ -156,29 +178,40 @@ if(TARGET SDL3::SDL3)
     target_include_directories(knid_app PUBLIC src)
     target_link_libraries(knid_app PUBLIC SDL3::SDL3)
 
-    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. Fonts (SIL OFL, see
-    # assets/fonts): Fredoka for text, Pixelify Sans for titles and labels; compiled in.
+    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. The Fredoka font
+    # (SIL OFL, assets/fonts) is compiled in.
     set(knid_font_cpp "")
-    foreach(font Fredoka-Medium PixelifySans-Medium PixelifySans-SemiBold)
-        string(REPLACE "-" "_" sym "knid_font_${font}")
-        set(out "${CMAKE_CURRENT_BINARY_DIR}/${sym}.cpp")
+    foreach(weight Medium SemiBold)
+        set(out "${CMAKE_CURRENT_BINARY_DIR}/font_fredoka_${weight}.cpp")
         add_custom_command(OUTPUT "${out}"
-            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/${font}.ttf
-                    -DOUTPUT=${out} -DSYMBOL=${sym} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
-            DEPENDS assets/fonts/${font}.ttf cmake/embed.cmake
-            COMMENT "Embedding ${font}")
+            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-${weight}.ttf
+                    -DOUTPUT=${out} -DSYMBOL=knid_font_fredoka_${weight} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+            DEPENDS assets/fonts/Fredoka-${weight}.ttf cmake/embed.cmake
+            COMMENT "Embedding Fredoka ${weight}")
         list(APPEND knid_font_cpp "${out}")
     endforeach()
     add_library(knid_launcher STATIC
+        src/app/achievements.cpp
+        src/app/credentials.cpp
+        src/app/http.cpp
         src/app/app.cpp
         src/app/platform.cpp
         src/app/theme.cpp
         src/app/toast.cpp
-        src/app/icon_art.cpp
         ${knid_font_cpp}
     )
     target_include_directories(knid_launcher PUBLIC src)
     target_link_libraries(knid_launcher PUBLIC knid_options knid_gba knid_core knid_saves knid_states imgui SDL3::SDL3)
+    target_link_libraries(knid_launcher PRIVATE rcheevos)
+    target_compile_definitions(knid_launcher PRIVATE KNID_VERSION="${PROJECT_VERSION}")
+    if(APPLE)
+        target_link_libraries(knid_launcher PRIVATE "-framework Security" "-framework CoreFoundation")
+    elseif(WIN32)
+        target_link_libraries(knid_launcher PRIVATE winhttp advapi32)
+    else()
+        find_package(Threads REQUIRED)
+        target_link_libraries(knid_launcher PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+    endif()
     if(NOT MSVC)
         target_compile_options(knid_launcher PRIVATE -Wall -Wextra)
     endif()
@@ -223,8 +256,7 @@ if(TARGET SDL3::SDL3)
             COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/packaging/README-Windows.txt" "${stage}/Read Me.txt"
             COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/LICENSE" "${stage}/LICENSE.txt"
             COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${stage}/"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-OFL.txt" "${stage}/licenses/"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/PixelifySans-OFL.txt" "${stage}/licenses/"
+            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/OFL.txt" "${stage}/licenses/Fredoka-OFL.txt"
             COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_CURRENT_BINARY_DIR}/zip-stage" "${CMAKE_COMMAND}" -E tar cf "${zip}" --format=zip KNID
             DEPENDS knid
             COMMENT "Building ${zip}"
@@ -242,7 +274,7 @@ if(TARGET SDL3::SDL3)
         install(FILES packaging/linux/knid.desktop DESTINATION share/applications)
         install(FILES "${knid_png}" DESTINATION share/icons/hicolor/256x256/apps)
         install(FILES LICENSE THIRD_PARTY_NOTICES.md packaging/README-Linux.txt DESTINATION share/doc/knid)
-        install(FILES assets/fonts/Fredoka-OFL.txt assets/fonts/PixelifySans-OFL.txt DESTINATION share/doc/knid)
+        install(FILES assets/fonts/OFL.txt DESTINATION share/doc/knid RENAME Fredoka-OFL.txt)
     endif()
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
@@ -274,6 +306,12 @@ if(KNID_BUILD_TESTS)
         KNID_TEST_BIOS="${PROJECT_SOURCE_DIR}/gba_bios.bin")
     add_test(NAME save_state_determinism COMMAND knid_state_test)
     set_tests_properties(save_state_determinism PROPERTIES SKIP_RETURN_CODE 77)
+    if(TARGET knid_launcher)
+        # RetroAchievements glue against canned server replies (offline).
+        add_executable(knid_achievements_test tests/achievements_test.cpp)
+        target_link_libraries(knid_achievements_test PRIVATE knid_launcher rcheevos)
+        add_test(NAME achievements COMMAND knid_achievements_test)
+    endif()
 endif()
 
 # Analysis tools. Their output is derived from the ROM and goes to generated/ (gitignored).

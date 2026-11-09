@@ -2,6 +2,7 @@
 *.gba
 *.GBA
 *.sav
+*.bak
 rom/
 build/
 build-*/

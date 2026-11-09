@@ -72,6 +72,8 @@ or `sha256sum <file>` (Linux), and compare it with the line in `SHA256SUMS.txt`.
   export yours. Your current save is backed up first.
 - **Optional BIOS.** No BIOS file is needed. If you have your own GBA BIOS dump, KNID can use it
   and play the original boot animation.
+- **RetroAchievements.** Sign in from Settings > Achievements to earn achievements, with a
+  notification and badge on screen the moment one unlocks. Optional hardcore mode.
 - **Shortcuts.** One shortcut per place (Applications or Start menu, and Desktop), kept up to
   date instead of duplicated.
 - **Updates built in.** KNID checks this repository's releases when it opens, shows what's new,
@@ -131,6 +133,12 @@ one. Save states from other emulators can't be imported; use the in-game save in
 **Do I need a GBA BIOS?**
 No. KNID has its own built-in replacement. If you own a GBA BIOS dump, you can select it in
 Settings > Game > BIOS to see the original boot animation.
+
+**How does RetroAchievements sign-in work? Is my password stored?**
+No. Your password is sent once to retroachievements.org over HTTPS and then forgotten. KNID keeps
+only the sign-in token the site gives back: in the Keychain on macOS, in Credential Manager on
+Windows, and in a file only you can read on Linux. **Sign out** removes it. The game is
+recognized by a fingerprint (MD5) of your ROM; the ROM itself is never uploaded.
 
 **Is this an emulator?**
 KNID contains a GBA runtime that runs only this one game, wrapped in an app made for it. It is
@@ -217,6 +225,5 @@ still published, just without the scan links.
 ## License
 
 KNID's source code is released under the [MIT License](LICENSE). Bundled open-source components
-are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Fredoka and
-Pixelify Sans fonts are licensed under the SIL Open Font License 1.1
-([Fredoka](assets/fonts/Fredoka-OFL.txt), [Pixelify Sans](assets/fonts/PixelifySans-OFL.txt)).
+are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Fredoka font is licensed
+under the [SIL Open Font License 1.1](assets/fonts/OFL.txt).

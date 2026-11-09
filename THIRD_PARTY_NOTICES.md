@@ -55,19 +55,69 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## rcheevos
+
+RetroAchievements runtime library, compiled in. https://github.com/RetroAchievements/rcheevos
+
+```
+MIT License
+
+Copyright (c) 2018 RetroAchievements.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## stb_image
+
+PNG decoder for achievement badges, compiled in. https://github.com/nothings/stb
+Used under its MIT license alternative (it is also available as public domain).
+
+```
+MIT License
+
+Copyright (c) 2017 Sean Barrett
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Fredoka font
 
-Body text font (Fredoka Medium), embedded in the program.
+The interface font (Fredoka Medium and SemiBold), embedded in the program.
 Copyright 2016 The Fredoka Project Authors (https://github.com/hafontia/Fredoka-One).
-Licensed under the SIL Open Font License, Version 1.1. Full text: `assets/fonts/Fredoka-OFL.txt`
-in the source and in the `licenses` folder of each download.
-
-## Pixelify Sans font
-
-Title and label font (Pixelify Sans Medium and SemiBold), embedded in the program.
-Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans).
-Licensed under the SIL Open Font License, Version 1.1. Full text:
-`assets/fonts/PixelifySans-OFL.txt` in the source and in the `licenses` folder of each download.
+Licensed under the SIL Open Font License, Version 1.1. The full license text is in
+`assets/fonts/OFL.txt` in the source and in the `licenses` folder of each download.
 
 ## zlib
 
