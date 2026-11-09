@@ -67,6 +67,13 @@ private:
     std::optional<std::vector<std::uint8_t>> undo_;
 };
 
+// What Play / --play / the shortcut should do. With "Auto-load save state" (states.autoload) on
+// and a usable Auto state, the game resumes from it; holding Shift bypasses that once.
+enum class StartMode { TitleScreen, ResumeAuto };
+inline StartMode choose_start(bool autoload, bool auto_usable, bool bypass) {
+    return autoload && auto_usable && !bypass ? StartMode::ResumeAuto : StartMode::TitleScreen;
+}
+
 // Hotkey actions (F5 quick save, F8 quick load, F6/F7 previous/next slot by default). The app
 // registers the handlers; input code (rebindable hotkeys) calls these.
 struct Hotkeys {
