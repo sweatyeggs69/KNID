@@ -1416,8 +1416,8 @@ int App::run() {
 }  // namespace
 
 int run_app(const AppOptions& options) {
-    App app(options);
-    return app.run();
+    auto app = std::make_unique<App>(options);  // large object: keep it off the stack
+    return app->run();
 }
 
 }  // namespace knid
