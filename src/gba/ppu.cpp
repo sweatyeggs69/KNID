@@ -304,15 +304,13 @@ void Gba::ppu_render_line(int y) {
     else { obj_prio_.fill(4); obj_window_.fill(0); }
     advance_refs();
 
-    // Widescreen policy. A scrolling scene keeps its level on 512-pixel-wide maps, which hold
-    // real scenery beyond the 240-pixel view; 256-wide maps are HUD/overlay layers that would
-    // only repeat, so they stay inside the original view. Screens with no 512-wide layer
-    // (title, menus, bitmap modes) keep the sides blank.
-    bool wide_scene = false;
+    // Widescreen policy. Only gameplay widens: a frame counts as gameplay when the level
+    // layout in RAM matches BG2 (wide_level.cpp). There, 512-wide level layers and sprites
+    // fill the sides, while 256-wide maps (HUD/overlays) stay inside the original view.
+    // Every other screen (title, menus, cutscenes) keeps black sides.
+    const bool wide_scene = m && wide_level_[0].valid;
     if (m) {
         auto is_text = [&](int bg) { return mode == 0 || (mode == 1 && bg < 2); };
-        for (int bg = 0; bg < 4; ++bg)
-            if (active[bg] && is_text(bg) && (io_[0x09 + 2 * bg] & 0x40)) wide_scene = true;  // size bit 14
         for (int bg = 0; bg < 4; ++bg) {
             if (!active[bg]) continue;
             if (wide_scene && is_text(bg) && (io_[0x09 + 2 * bg] & 0x40)) continue;
