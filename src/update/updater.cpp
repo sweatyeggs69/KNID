@@ -284,7 +284,10 @@ void Updater::check(bool manual) {
                 return;
             }
             if (http_status == 403 || http_status == 429)
-                err = "GitHub is limiting update checks right now. Try again in an hour.";
+                err = "Couldn't check for updates right now (GitHub is limiting requests). "
+                      "KNID will try again the next time it opens.";
+            else if (http_status >= 500)
+                err = "Couldn't check for updates right now (GitHub had a problem). Try again later.";
             s->fail(err);
             return;
         }

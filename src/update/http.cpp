@@ -168,7 +168,11 @@ bool http_download(const std::string& url, const fs::path& file, const HttpOptio
     std::string ua = opt.user_agent;
     std::string out = file.string();
     std::string accept = "Accept: " + opt.accept;
-    std::vector<const char*> args = {curl, "--fail", "--silent", "--show-error", "--location",
+    // No --fail: the HTTP status is printed after a marker instead, because curl versions differ
+    // in how they report HTTP errors (macOS curl exits with 56 rather than 22 for a 403).
+    const char* status_marker = "\nKNID_HTTP_STATUS=%{http_code}\n";
+    std::vector<const char*> args = {curl, "--silent", "--show-error", "--location",
+                                     "--write-out", status_marker,
                                      "--proto", proto.c_str(), "--proto-redir", proto.c_str(),
                                      "--connect-timeout", "20", "--retry", "2",
                                      "--speed-limit", "1024", "--speed-time", "60",
@@ -209,8 +213,13 @@ bool http_download(const std::string& url, const fs::path& file, const HttpOptio
     std::string msg = text ? std::string(static_cast<const char*>(text), n) : std::string();
     SDL_free(text);
     SDL_DestroyProcess(proc);
+    int status = 0;
+    if (size_t m = msg.rfind("KNID_HTTP_STATUS="); m != std::string::npos) {
+        status = std::atoi(msg.c_str() + m + 17);
+        msg.erase(m);
+    }
     while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r')) msg.pop_back();
-    if (code == 0) {
+    if (code == 0 && status >= 200 && status < 300) {
         if (opt.progress) {
             auto size = fs::file_size(file, ec);
             opt.progress(ec ? 0 : std::uint64_t(size), opt.expected_size);
@@ -218,16 +227,16 @@ bool http_download(const std::string& url, const fs::path& file, const HttpOptio
         return true;
     }
     fs::remove(file, ec);
-    if (code == 22 && opt.status_out) {  // "curl: (22) The requested URL returned error: 404"
-        size_t colon = msg.rfind(": ");
-        *opt.status_out = colon == std::string::npos ? 0 : std::atoi(msg.c_str() + colon + 2);
+    if (code == 0 || status >= 300) {  // the server answered, with an error
+        if (opt.status_out) *opt.status_out = status;
+        if (error) *error = "The update server answered with HTTP " + std::to_string(status) + ".";
+        return false;
     }
     if (error) {
         switch (code) {
             case 6: case 7: *error = "Couldn't reach the update server. Check your internet connection."; break;
             case 28: *error = "The update server took too long to answer."; break;
             case 35: case 51: case 58: case 60: *error = "The secure connection to the update server failed."; break;
-            case 22: *error = "The update server answered with an error" + (msg.empty() ? std::string(".") : ": " + msg); break;
             case 23: *error = "Couldn't write the download to disk."; break;
             default: *error = "Download failed (curl " + std::to_string(code) + (msg.empty() ? ")." : "): " + msg); break;
         }
