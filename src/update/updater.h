@@ -8,8 +8,8 @@
 //   install()   swaps the staged version in (main thread); the app then quits and relaunch()
 //               starts the new version after saves are flushed
 //
-// Only the app itself is replaced: KNID.app (macOS), KNID.exe and its bundled text files
-// (Windows), or the AppImage file (Linux). Settings, saves, save states, the ROM and the BIOS
+// Only the app itself is replaced: KNID.app (macOS), the single KNID.exe (Windows), or the
+// AppImage file (Linux). Settings, saves, save states, the ROM and the BIOS
 // live elsewhere and are never touched. A copy that can't replace itself (read-only folder,
 // running from the disk image, not an AppImage) still gets notified and is pointed at the
 // release page.

@@ -22,6 +22,7 @@
 #include "app/platform.h"
 #include "app/save_import.h"
 #include "app/states.h"
+#include "app/licenses.h"
 #include "app/theme.h"
 #include "app/toast.h"
 #include "gba/gba.h"
@@ -236,6 +237,27 @@ bool App::init_window() {
                          },
                          [this] { if (game_ && screen_ == Screen::Game) save_new_slot(); }});
     register_options_tab("Updates", [this](Config& c) { update_ui::draw_tab(*updater_, c); });
+    register_options_tab("About", [](Config&) {
+        const auto& c = theme::palette();
+        ImGui::TextUnformatted("KNID " KNID_VERSION);
+        ImGui::PushFont(theme::font_small());
+        ImGui::TextColored(c.text_dim, "An unofficial project. Not affiliated with Nintendo or HAL Laboratory.");
+        ImGui::TextColored(c.text_dim, "https://github.com/sweatyeggs69/KNID");
+        ImGui::PopFont();
+        auto block = [](const char* title, std::string_view text) {
+            if (!ImGui::CollapsingHeader(title)) return;
+            ImGui::PushFont(theme::font_small());
+            ImGui::BeginChild(title, ImVec2(0, 260), ImGuiChildFlags_Borders);
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextUnformatted(text.data(), text.data() + text.size());
+            ImGui::PopTextWrapPos();
+            ImGui::EndChild();
+            ImGui::PopFont();
+        };
+        block("KNID license (MIT)", licenses::knid());
+        block("Third-party notices", licenses::notices());
+        block("Fredoka font license (SIL OFL 1.1)", licenses::fredoka_ofl());
+    });
     update_ui::set_restart_handler([this] { running_ = false; });  // relaunched after shutdown()
     // No network in scripted test runs, unless a test feed is set.
     if (opt_.frames < 0 || std::getenv("KNID_UPDATE_URL")) update_ui::init(*updater_, config_);
