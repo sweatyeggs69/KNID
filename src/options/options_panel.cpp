@@ -74,8 +74,8 @@ const char* aspect_label(Aspect a) {
         case Aspect::Native: return "Off (original 3:2)";
         case Aspect::R16x10: return "16:10";
         case Aspect::R16x9: return "16:9";
-        case Aspect::R21x9: return "21:9";
-        case Aspect::R32x9: return "32:9";
+        case Aspect::R21x9: return "21:9 (experimental)";
+        case Aspect::R32x9: return "32:9 (experimental)";
         default: return name(a);
     }
 }
@@ -94,8 +94,8 @@ void display_tab(Config& config) {
                 "wider than others.");
     s.scale = static_cast<ScaleMode>(scale);
 
-    // Widescreen shows extra level at the sides (Gba::set_wide_margin). Until the game can
-    // supply real scenery there, the host keeps the margin at 0 and the view stays 3:2.
+    // Widescreen shows extra level at the sides (Gba::set_wide_margin); the host applies
+    // display::wide_margin(aspect) and presents Gba::wide_framebuffer().
     if (kShowWidescreen) {
         if (ImGui::BeginCombo("Widescreen view", aspect_label(s.aspect))) {
             for (int i = 0; i < int(Aspect::Count); ++i) {
@@ -108,8 +108,10 @@ void display_tab(Config& config) {
             ImGui::EndCombo();
         }
         help_marker("Shows more of the level at the left and right instead of stretching the "
-                    "picture. Pixels always stay square. Work in progress: until the game can "
-                    "fill the sides with real scenery, the picture stays 3:2 with borders.");
+                    "picture. Pixels always stay square, and the HUD stays where it was. Menus "
+                    "and the title screen stay 3:2. 16:10 and 16:9 show real scenery; 21:9 and "
+                    "32:9 are experimental, because the game only loads a little ahead of the "
+                    "original view, so the far edges can show unfinished scenery.");
     }
 
     bool fullscreen = config.get("display.fullscreen", "0") == "1";

@@ -287,6 +287,24 @@ void Gba::ppu_render_line(int y) {
     else { obj_prio_.fill(4); obj_window_.fill(0); }
     advance_refs();
 
+    // Widescreen policy. A scrolling scene keeps its level on 512-pixel-wide maps, which hold
+    // real scenery beyond the 240-pixel view; 256-wide maps are HUD/overlay layers that would
+    // only repeat, so they stay inside the original view. Screens with no 512-wide layer
+    // (title, menus, bitmap modes) keep the sides blank.
+    bool wide_scene = false;
+    if (m) {
+        auto is_text = [&](int bg) { return mode == 0 || (mode == 1 && bg < 2); };
+        for (int bg = 0; bg < 4; ++bg)
+            if (active[bg] && is_text(bg) && (io_[0x09 + 2 * bg] & 0x40)) wide_scene = true;  // size bit 14
+        for (int bg = 0; bg < 4; ++bg) {
+            if (!active[bg]) continue;
+            if (wide_scene && is_text(bg) && (io_[0x09 + 2 * bg] & 0x40)) continue;
+            if (wide_scene && !is_text(bg)) continue;
+            std::fill(bg_opaque_[bg].begin(), bg_opaque_[bg].begin() + m, u8(0));
+            std::fill(bg_opaque_[bg].begin() + m + kScreenWidth, bg_opaque_[bg].begin() + width, u8(0));
+        }
+    }
+
     u32 bgprio[4];
     for (int bg = 0; bg < 4; ++bg) bgprio[bg] = io_[0x08 + 2 * bg] & 3;
 
@@ -310,6 +328,10 @@ void Gba::ppu_render_line(int y) {
     u16 backdrop = rd16(&pal_[0]);
 
     for (int x = 0; x < width; ++x) {
+        if (m && !wide_scene && (x < m || x >= m + kScreenWidth)) {
+            out[x] = 0;
+            continue;
+        }
         u8 mask = 0x3F;
         if (any_win) {
             // Window edges are given in 0..240; the extra columns reuse the nearest edge.
