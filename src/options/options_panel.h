@@ -1,7 +1,10 @@
 #pragma once
-// Options panel drawn inside the launcher (and later an in-game pause menu).
-// Owns the display.* and input.* settings in knid::Config.
+// The settings menu: every display and controls option, opened with F1 in game and from the
+// launcher. Owns the display.* and input.* settings in knid::Config; other parts of the app
+// can add their own tabs (for example the launcher's Game tab) with register_options_tab.
 #include <SDL3/SDL.h>
+
+#include <functional>
 
 #include "options/settings_io.h"
 
@@ -12,11 +15,28 @@ class Config;
 SettingsIO settings_io(Config& config);
 }  // namespace knid
 
-// Draws the options UI with Dear ImGui into the current window. Call between ImGui::NewFrame()
-// and ImGui::Render().
+// Draws the options tabs with Dear ImGui into the current window. Call between
+// ImGui::NewFrame() and ImGui::Render().
 void draw_options_panel(knid::Config& config);
 
-// Forward every SDL event here while the options panel is open. Needed for gamepad hotplug
-// and for capturing the next key or button when rebinding a control. Returns true when the
-// event was consumed by a rebind (do not pass it on to other UI).
+// Adds a tab drawn before Display and Controls, in registration order. Registering the same
+// name again replaces its draw function.
+void register_options_tab(const char* name, std::function<void(knid::Config&)> draw);
+
+// Forward every SDL event here (before ImGui) while the panel or menu is open. Needed for
+// gamepad hotplug and for capturing the next key or button when rebinding a control.
+// Returns true when the event was consumed by a rebind (do not pass it on).
 bool options_panel_handle_event(const SDL_Event& event);
+
+// ---- F1 settings menu (an overlay window on top of the paused game) ----
+//
+// Host contract: F1 (and Esc while open) toggles it. While options_menu_open(): pause the
+// game and audio, keep drawing the last frame underneath, forward events to
+// options_panel_handle_event first, and keep keys away from the game. After it closes,
+// reload the Presenter and input::Manager so the changes apply.
+void options_menu_toggle();
+void options_menu_set_open(bool open);
+bool options_menu_open();
+void draw_options_menu(knid::Config& config);
+// Optional "Quit to launcher" button. Without a handler the button is hidden.
+void set_options_menu_quit_handler(std::function<void()> on_quit);

@@ -2,8 +2,11 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "app/config.h"
 #include "options/display.h"
@@ -21,6 +24,7 @@ SettingsIO settings_io(Config& config) {
 
 namespace {
 using namespace knid;
+constexpr bool kShowWidescreen = true;
 using namespace knid::display;
 using knid::input::Button;
 
@@ -28,6 +32,9 @@ using knid::input::Button;
 struct PanelState {
     Config* config = nullptr;
     std::unique_ptr<input::Manager> input;
+    std::vector<std::pair<std::string, std::function<void(Config&)>>> extra_tabs;
+    bool menu_open = false;
+    std::function<void()> on_quit;
 };
 PanelState& state() {
     static PanelState s;
@@ -64,8 +71,11 @@ bool enum_combo(const char* label, E& value) {
 
 const char* aspect_label(Aspect a) {
     switch (a) {
-        case Aspect::Native: return "3:2 (original)";
-        case Aspect::Fill: return "Fill window";
+        case Aspect::Native: return "Off (original 3:2)";
+        case Aspect::R16x10: return "16:10";
+        case Aspect::R16x9: return "16:9";
+        case Aspect::R21x9: return "21:9";
+        case Aspect::R32x9: return "32:9";
         default: return name(a);
     }
 }
@@ -84,19 +94,30 @@ void display_tab(Config& config) {
                 "wider than others.");
     s.scale = static_cast<ScaleMode>(scale);
 
-    if (ImGui::BeginCombo("Aspect ratio", aspect_label(s.aspect))) {
-        for (int i = 0; i < int(Aspect::Count); ++i) {
-            const Aspect a = Aspect(i);
-            if (ImGui::Selectable(aspect_label(a), a == s.aspect)) {
-                s.aspect = a;
-                changed = true;
+    // Widescreen shows extra level at the sides (Gba::set_wide_margin). Until the game can
+    // supply real scenery there, the host keeps the margin at 0 and the view stays 3:2.
+    if (kShowWidescreen) {
+        if (ImGui::BeginCombo("Widescreen view", aspect_label(s.aspect))) {
+            for (int i = 0; i < int(Aspect::Count); ++i) {
+                const Aspect a = Aspect(i);
+                if (ImGui::Selectable(aspect_label(a), a == s.aspect)) {
+                    s.aspect = a;
+                    changed = true;
+                }
             }
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
+        help_marker("Shows more of the level at the left and right instead of stretching the "
+                    "picture. Pixels always stay square. Work in progress: until the game can "
+                    "fill the sides with real scenery, the picture stays 3:2 with borders.");
     }
-    help_marker("Wider shapes stretch the 240x160 picture sideways to fill modern screens. "
-                "With pixel perfect on, pixels stay uniform: each one becomes, for example, "
-                "7 screen pixels wide and 6 tall.");
+
+    bool fullscreen = config.get("display.fullscreen", "0") == "1";
+    if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
+        config.set("display.fullscreen", fullscreen ? "1" : "0");
+        if (SDL_Window* w = SDL_GetKeyboardFocus()) SDL_SetWindowFullscreen(w, fullscreen);
+    }
+    help_marker("F11 also switches fullscreen.");
 
     ImGui::SeparatorText("Look");
     bool gba_colors = s.color == ColorMode::GbaLcd;
@@ -137,9 +158,6 @@ void display_tab(Config& config) {
 
     if (changed) store(s, [&](const std::string& k, const std::string& v) { config.set(k, v); });
 
-    ImGui::Spacing();
-    ImGui::TextDisabled("In game: F2 scaling, F3 aspect, F4 overlay, F5 strength,");
-    ImGui::TextDisabled("F6 colors, F7 blending, F11 fullscreen, F1 help.");
 }
 
 void controls_tab(input::Manager& in, Config& config) {
@@ -196,8 +214,6 @@ void controls_tab(input::Manager& in, Config& config) {
     }
     help_marker("How far a stick or trigger must move before it counts as a press.");
 
-    ImGui::Spacing();
-    ImGui::TextDisabled("In game: F9 rebinds every button in turn, Shift+F9 restores defaults.");
 }
 }  // namespace
 
@@ -208,6 +224,12 @@ void draw_options_panel(knid::Config& config) {
         st.input = std::make_unique<input::Manager>(settings_io(config));
     }
     if (ImGui::BeginTabBar("options")) {
+        for (auto& [tab_name, draw] : st.extra_tabs) {
+            if (ImGui::BeginTabItem(tab_name.c_str())) {
+                if (draw) draw(config);
+                ImGui::EndTabItem();
+            }
+        }
         if (ImGui::BeginTabItem("Display")) {
             display_tab(config);
             ImGui::EndTabItem();
@@ -226,4 +248,61 @@ void draw_options_panel(knid::Config& config) {
 bool options_panel_handle_event(const SDL_Event& event) {
     auto& st = state();
     return st.input ? st.input->handle_event(event) : false;
+}
+
+void register_options_tab(const char* name, std::function<void(knid::Config&)> draw) {
+    auto& tabs = state().extra_tabs;
+    for (auto& t : tabs)
+        if (t.first == name) {
+            t.second = std::move(draw);
+            return;
+        }
+    tabs.emplace_back(name, std::move(draw));
+}
+
+void options_menu_toggle() { options_menu_set_open(!state().menu_open); }
+
+void options_menu_set_open(bool open) {
+    auto& st = state();
+    if (!open && st.input && st.input->remapping()) st.input->cancel_remap();
+    st.menu_open = open;
+}
+
+bool options_menu_open() { return state().menu_open; }
+
+void set_options_menu_quit_handler(std::function<void()> on_quit) { state().on_quit = std::move(on_quit); }
+
+void draw_options_menu(knid::Config& config) {
+    auto& st = state();
+    if (!st.menu_open) return;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    // Dim the paused game behind the menu.
+    ImGui::GetBackgroundDrawList()->AddRectFilled(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
+                                                  IM_COL32(10, 6, 30, 150));
+    const ImVec2 size(std::min(vp->Size.x * 0.9f, 640.0f * ImGui::GetFontSize() / 13.0f),
+                      std::min(vp->Size.y * 0.9f, 560.0f * ImGui::GetFontSize() / 13.0f));
+    ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f), ImGuiCond_Always,
+                            ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    bool open = true;
+    if (ImGui::Begin("Settings", &open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
+        const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+        if (ImGui::BeginChild("tabs", ImVec2(0, -footer))) draw_options_panel(config);
+        ImGui::EndChild();
+        ImGui::Separator();
+        if (ImGui::Button("Resume")) open = false;
+        if (st.on_quit) {
+            ImGui::SameLine();
+            if (ImGui::Button("Quit to launcher")) {
+                open = false;
+                st.on_quit();
+            }
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("F1 or Esc closes this menu");
+    }
+    ImGui::End();
+    if (!open) options_menu_set_open(false);
 }

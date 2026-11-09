@@ -18,9 +18,19 @@ inline constexpr int kPixels = kWidth * kHeight;
 // Fit: largest size that fits the window at the chosen aspect, fractional scale allowed.
 enum class ScaleMode { Integer, Fit, Count };
 
-// Native is the GBA's 3:2. The rest stretch the 240x160 image to that shape.
-// Fill uses the window's own shape.
-enum class Aspect { Native, R4x3, R16x10, R16x9, R21x9, R32x9, Fill, Count };
+// Shape of the game view. Native is the GBA's own 240x160 (3:2). The wider shapes never
+// stretch: they ask the renderer to draw extra columns of the level at the sides, so pixels
+// stay square (see wide_width). Pixels are always square.
+enum class Aspect { Native, R16x10, R16x9, R21x9, R32x9, Count };
+
+// Widest view the runtime may be asked for, and the per-side margin that implies.
+inline constexpr int kMaxWideWidth = 568;
+inline constexpr int kMaxWideMargin = (kMaxWideWidth - kWidth) / 2;
+
+// Width in GBA pixels of a 160-line view with this shape (even, so margins are equal).
+int wide_width(Aspect a);
+// Extra columns per side for this shape: (wide_width - 240) / 2.
+inline int wide_margin(Aspect a) { return (wide_width(a) - kWidth) / 2; }
 
 // Grid: dark lines between pixels. Lcd: RGB subpixel stripes plus grid, like the GBA panel.
 // Scanlines: darkened horizontal line at the bottom of each pixel row.
@@ -67,20 +77,19 @@ struct Layout {
     bool pixel_perfect = false;
 };
 
-// Target width/height ratio for an aspect, given the output size (for Fill).
-double aspect_ratio(Aspect a, int out_w, int out_h);
+// Width/height ratio for an aspect.
+double aspect_ratio(Aspect a);
 
-// Chooses where to draw the 240x160 frame inside an out_w x out_h output.
-// Integer mode with a non-native aspect picks separate whole-number X and Y factors that
-// come closest to the requested shape, so pixels stay uniform. If the window is smaller
-// than 1x it falls back to Fit.
-Layout compute_layout(int out_w, int out_h, ScaleMode mode, Aspect aspect);
+// Chooses where to draw a src_w x src_h frame (square pixels) inside an out_w x out_h output.
+// Integer mode uses the largest whole-number scale that fits; if even 1x does not fit it
+// falls back to Fit.
+Layout compute_layout(int out_w, int out_h, ScaleMode mode, int src_w = kWidth, int src_h = kHeight);
 
 // Converts BGR555 GBA pixels to 0xAARRGGBB through a lookup table per color mode.
 class ColorPipeline {
 public:
     ColorPipeline();
-    void convert(const std::uint16_t* src, std::uint32_t* dst, ColorMode mode) const;
+    void convert(const std::uint16_t* src, std::uint32_t* dst, int count, ColorMode mode) const;
     std::uint32_t lookup(std::uint16_t bgr555, ColorMode mode) const {
         return lut_[static_cast<int>(mode)][bgr555 & 0x7FFF];
     }
@@ -89,10 +98,10 @@ private:
     std::array<std::vector<std::uint32_t>, static_cast<int>(ColorMode::Count)> lut_;
 };
 
-// Blends consecutive 0xAARRGGBB frames in place.
+// Blends consecutive 0xAARRGGBB frames of `count` pixels in place. A size change restarts.
 class FrameBlender {
 public:
-    void process(std::uint32_t* frame, Blend mode);
+    void process(std::uint32_t* frame, int count, Blend mode);
     void reset() { have_prev_ = false; }
 
 private:
@@ -102,9 +111,9 @@ private:
 };
 
 // Builds a w x h multiply mask (0xAARRGGBB, white = no change) for the given overlay,
-// aligned to the GBA pixel cells of a frame drawn at that size. Returns false (and leaves
+// aligned to the pixel cells of a cells_x x cells_y frame drawn at that size. Returns false (and leaves
 // `out` empty) when there is nothing to draw, e.g. Overlay::None or cells too small.
 bool build_overlay(Overlay overlay, int strength_percent, int w, int h,
-                   std::vector<std::uint32_t>& out);
+                   std::vector<std::uint32_t>& out, int cells_x = kWidth, int cells_y = kHeight);
 
 }  // namespace knid::display

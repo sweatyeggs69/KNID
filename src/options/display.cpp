@@ -17,12 +17,10 @@ const char* name(ScaleMode m) {
 const char* name(Aspect a) {
     switch (a) {
         case Aspect::Native: return "3:2";
-        case Aspect::R4x3: return "4:3";
         case Aspect::R16x10: return "16:10";
         case Aspect::R16x9: return "16:9";
         case Aspect::R21x9: return "21:9";
         case Aspect::R32x9: return "32:9";
-        case Aspect::Fill: return "Fill";
         default: return "?";
     }
 }
@@ -95,66 +93,38 @@ Settings load(const Getter& get) {
     return s;
 }
 
-double aspect_ratio(Aspect a, int out_w, int out_h) {
+double aspect_ratio(Aspect a) {
     switch (a) {
-        case Aspect::R4x3: return 4.0 / 3.0;
         case Aspect::R16x10: return 16.0 / 10.0;
         case Aspect::R16x9: return 16.0 / 9.0;
-        case Aspect::R21x9: return 21.0 / 9.0;  // marketing "21:9" panels are really 64:27
+        case Aspect::R21x9: return 21.0 / 9.0;
         case Aspect::R32x9: return 32.0 / 9.0;
-        case Aspect::Fill: return out_h > 0 ? double(out_w) / double(out_h) : 1.5;
         default: return double(kWidth) / double(kHeight);
     }
 }
 
-namespace {
-Layout fit_layout(int out_w, int out_h, double ratio) {
-    Layout l;
-    double w = out_w, h = out_w / ratio;
-    if (h > out_h) {
-        h = out_h;
-        w = out_h * ratio;
-    }
-    l.dest.w = std::max(1, int(std::lround(w)));
-    l.dest.h = std::max(1, int(std::lround(h)));
-    l.dest.x = (out_w - l.dest.w) / 2;
-    l.dest.y = (out_h - l.dest.h) / 2;
-    return l;
+int wide_width(Aspect a) {
+    int w = int(std::lround(kHeight * aspect_ratio(a) / 2.0)) * 2;
+    return std::clamp(w, kWidth, kMaxWideWidth);
 }
-}  // namespace
 
-Layout compute_layout(int out_w, int out_h, ScaleMode mode, Aspect aspect) {
+Layout compute_layout(int out_w, int out_h, ScaleMode mode, int src_w, int src_h) {
     out_w = std::max(out_w, 1);
     out_h = std::max(out_h, 1);
-    const double ratio = aspect_ratio(aspect, out_w, out_h);
-    if (mode == ScaleMode::Fit) return fit_layout(out_w, out_h, ratio);
-
-    int sx = 0, sy = 0;
-    if (aspect == Aspect::Fill) {
-        sx = out_w / kWidth;
-        sy = out_h / kHeight;
-    } else {
-        // Width of one GBA pixel relative to its height needed for the requested shape.
-        const double par = ratio * kHeight / kWidth;
-        for (int y = out_h / kHeight; y >= 1; --y) {
-            int x = std::max(1, int(std::lround(y * par)));
-            if (x * kWidth > out_w) x = out_w / kWidth;  // widest whole factor that fits
-            // Accept if the shape is within 15% of the request, else try a smaller height.
-            if (x >= 1 && std::abs(double(x) / y - par) <= 0.15 * par) {
-                sx = x;
-                sy = y;
-                break;
-            }
-        }
-    }
-    if (sx < 1 || sy < 1) return fit_layout(out_w, out_h, ratio);
-
+    src_w = std::max(src_w, 1);
+    src_h = std::max(src_h, 1);
     Layout l;
-    l.scale_x = sx;
-    l.scale_y = sy;
-    l.pixel_perfect = true;
-    l.dest.w = kWidth * sx;
-    l.dest.h = kHeight * sy;
+    const int s = std::min(out_w / src_w, out_h / src_h);
+    if (mode == ScaleMode::Integer && s >= 1) {
+        l.scale_x = l.scale_y = s;
+        l.pixel_perfect = true;
+        l.dest.w = src_w * s;
+        l.dest.h = src_h * s;
+    } else {
+        const double f = std::min(double(out_w) / src_w, double(out_h) / src_h);
+        l.dest.w = std::max(1, int(std::lround(src_w * f)));
+        l.dest.h = std::max(1, int(std::lround(src_h * f)));
+    }
     l.dest.x = (out_w - l.dest.w) / 2;
     l.dest.y = (out_h - l.dest.h) / 2;
     return l;
@@ -195,28 +165,28 @@ ColorPipeline::ColorPipeline() {
     }
 }
 
-void ColorPipeline::convert(const std::uint16_t* src, std::uint32_t* dst, ColorMode mode) const {
+void ColorPipeline::convert(const std::uint16_t* src, std::uint32_t* dst, int count, ColorMode mode) const {
     const auto& t = lut_[static_cast<int>(mode)];
-    for (int i = 0; i < kPixels; ++i) dst[i] = t[src[i] & 0x7FFF];
+    for (int i = 0; i < count; ++i) dst[i] = t[src[i] & 0x7FFF];
 }
 
 // ---------------------------------------------------------------------------------------
 // Interframe blending
 
-void FrameBlender::process(std::uint32_t* frame, Blend mode) {
-    if (mode != last_mode_) {
+void FrameBlender::process(std::uint32_t* frame, int count, Blend mode) {
+    if (mode != last_mode_ || prev_.size() != std::size_t(count)) {
         have_prev_ = false;
         last_mode_ = mode;
     }
     if (mode == Blend::Off) return;
-    if (prev_.size() != std::size_t(kPixels)) prev_.assign(kPixels, 0);
+    if (prev_.size() != std::size_t(count)) prev_.assign(std::size_t(count), 0);
     if (!have_prev_) {
-        std::copy(frame, frame + kPixels, prev_.begin());
+        std::copy(frame, frame + count, prev_.begin());
         have_prev_ = true;
         return;
     }
 
-    for (int i = 0; i < kPixels; ++i) {
+    for (int i = 0; i < count; ++i) {
         const std::uint32_t cur = frame[i], old = prev_[i];
         std::uint32_t out;
         if (mode == Blend::Mix) {
@@ -264,19 +234,20 @@ struct Rgb {
 }  // namespace
 
 bool build_overlay(Overlay overlay, int strength_percent, int w, int h,
-                   std::vector<std::uint32_t>& out) {
+                   std::vector<std::uint32_t>& out, int cells_x, int cells_y) {
     out.clear();
     const double s = std::clamp(strength_percent, 0, 100) / 100.0;
     if (overlay == Overlay::None || s <= 0.0 || w <= 0 || h <= 0) return false;
 
-    const double cell_w = double(w) / kWidth, cell_h = double(h) / kHeight;
+    if (cells_x <= 0 || cells_y <= 0) return false;
+    const double cell_w = double(w) / cells_x, cell_h = double(h) / cells_y;
     if (overlay == Overlay::Lcd && cell_w < 3.0) overlay = Overlay::Grid;  // no room for stripes
     const bool lines_x = cell_w >= 2.0, lines_y = cell_h >= 2.0;
     if (overlay == Overlay::Grid && !lines_x && !lines_y) return false;
     if (overlay == Overlay::Scanlines && !lines_y) return false;
 
-    const auto ax = axis_cells(w, kWidth);
-    const auto ay = axis_cells(h, kHeight);
+    const auto ax = axis_cells(w, cells_x);
+    const auto ay = axis_cells(h, cells_y);
     const double dark = 1.0 - s;
 
     std::vector<Rgb> col(w);

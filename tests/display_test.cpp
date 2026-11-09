@@ -1,4 +1,5 @@
 // Headless checks for the display options: layout math, colors, blending, overlays, settings.
+#include <cmath>
 #include <cstdio>
 #include <map>
 #include <string>
@@ -19,38 +20,39 @@ static int failures = 0;
 
 static void layouts() {
     // Native 3:2 window at 4x: fills it exactly.
-    Layout l = compute_layout(960, 640, ScaleMode::Integer, Aspect::Native);
+    Layout l = compute_layout(960, 640, ScaleMode::Integer);
     CHECK(l.pixel_perfect && l.scale_x == 4 && l.scale_y == 4);
     CHECK(l.dest.x == 0 && l.dest.y == 0 && l.dest.w == 960 && l.dest.h == 640);
 
     // 1080p native: 6x is 1440x960, centered.
-    l = compute_layout(1920, 1080, ScaleMode::Integer, Aspect::Native);
+    l = compute_layout(1920, 1080, ScaleMode::Integer);
     CHECK(l.scale_x == 6 && l.scale_y == 6 && l.dest.x == 240 && l.dest.y == 60);
 
-    // 1080p 16:9 pixel perfect: whole-number factors per axis, shape close to 16:9.
-    l = compute_layout(1920, 1080, ScaleMode::Integer, Aspect::R16x9);
-    CHECK(l.pixel_perfect && l.dest.w <= 1920 && l.dest.h <= 1080);
-    const double ratio = double(l.dest.w) / l.dest.h;
-    CHECK(ratio > 16.0 / 9.0 * 0.85 && ratio < 16.0 / 9.0 * 1.15);
-    std::printf("1080p 16:9 integer: %dx%d (%dx%d per pixel)\n", l.dest.w, l.dest.h, l.scale_x, l.scale_y);
+    // Widescreen never stretches: a 16:9 view is wider in GBA pixels, scaled uniformly.
+    CHECK(wide_width(Aspect::Native) == 240);
+    CHECK(wide_width(Aspect::R16x9) == 284);
+    CHECK(wide_width(Aspect::R21x9) == 374);
+    CHECK(wide_width(Aspect::R32x9) == kMaxWideWidth);
+    CHECK(wide_margin(Aspect::R16x9) == 22);
+    l = compute_layout(1920, 1080, ScaleMode::Integer, wide_width(Aspect::R16x9), kHeight);
+    CHECK(l.scale_x == 6 && l.scale_y == 6 && l.dest.w == 284 * 6 && l.dest.h == 960);
+    l = compute_layout(3840, 2160, ScaleMode::Fit, wide_width(Aspect::R16x9), kHeight);
+    CHECK(!l.pixel_perfect && l.dest.h == 2160 && l.dest.w <= 3840);
 
-    // 4K 21:9 fit is exactly 21:9 and touches the window edge.
-    l = compute_layout(3840, 2160, ScaleMode::Fit, Aspect::R21x9);
-    CHECK(!l.pixel_perfect && l.dest.w == 3840);
-    // Fill integer: independent factors.
-    l = compute_layout(2560, 1080, ScaleMode::Integer, Aspect::Fill);
-    CHECK(l.scale_x == 10 && l.scale_y == 6);
     // Tiny window falls back to fit instead of disappearing.
-    l = compute_layout(200, 100, ScaleMode::Integer, Aspect::Native);
+    l = compute_layout(200, 100, ScaleMode::Integer);
     CHECK(l.dest.w > 0 && l.dest.h > 0 && l.dest.w <= 200 && l.dest.h <= 100);
 
-    // A sweep of window sizes: the frame always fits.
+    // A sweep of window sizes: the frame always fits and keeps square pixels.
     for (int w = 100; w < 4000; w += 97)
         for (int h = 100; h < 2500; h += 89)
             for (int m = 0; m < int(ScaleMode::Count); ++m)
                 for (int a = 0; a < int(Aspect::Count); ++a) {
-                    Layout s = compute_layout(w, h, ScaleMode(m), Aspect(a));
+                    const int sw = wide_width(Aspect(a));
+                    Layout s = compute_layout(w, h, ScaleMode(m), sw, kHeight);
                     CHECK(s.dest.x >= 0 && s.dest.y >= 0 && s.dest.x + s.dest.w <= w && s.dest.y + s.dest.h <= h);
+                    const double px = double(s.dest.w) / sw, py = double(s.dest.h) / kHeight;
+                    CHECK(std::abs(px - py) / py < 0.02 || s.dest.w < 50);
                 }
 }
 
@@ -69,12 +71,12 @@ static void colors() {
 static void blending() {
     std::vector<std::uint32_t> a(kPixels, 0xFFFFFFFFu), b(kPixels, 0xFF000000u);
     FrameBlender fb;
-    fb.process(a.data(), Blend::Mix);
+    fb.process(a.data(), kPixels, Blend::Mix);
     CHECK(a[0] == 0xFFFFFFFFu);  // first frame passes through
-    fb.process(b.data(), Blend::Mix);
+    fb.process(b.data(), kPixels, Blend::Mix);
     CHECK(b[0] == 0xFF808080u || b[0] == 0xFF7F7F7Fu);
     std::vector<std::uint32_t> c(kPixels, 0xFF000000u);
-    fb.process(c.data(), Blend::Off);
+    fb.process(c.data(), kPixels, Blend::Off);
     CHECK(c[0] == 0xFF000000u);
 }
 
@@ -91,6 +93,9 @@ static void overlays() {
     CHECK((m[0] & 0x00FF0000u) == 0x00FF0000u && (m[0] & 0xFF) < 0xFF);  // red stripe first
     CHECK(build_overlay(Overlay::Scanlines, 50, 960, 640, m));
     CHECK(m[0] == 0xFFFFFFFFu && m[960 * 3] != 0xFFFFFFFFu);
+    // Wide frame: cells follow the wider source.
+    CHECK(build_overlay(Overlay::Grid, 50, 284 * 4, 640, m, 284, 160));
+    CHECK(m[3] != 0xFFFFFFFFu && m[4] == 0xFFFFFFFFu);
 }
 
 static void settings_roundtrip() {
@@ -107,7 +112,7 @@ static void settings_roundtrip() {
     Settings t = load(get);
     CHECK(t.scale == s.scale && t.aspect == s.aspect && t.overlay == s.overlay);
     CHECK(t.overlay_strength == 70 && t.color == s.color && t.blend == s.blend);
-    kv["display.aspect"] = "nonsense";
+    kv["display.aspect"] = "4:3";  // removed (stretched) setting falls back to native
     kv["display.overlay_strength"] = "x";
     t = load(get);
     CHECK(t.aspect == Aspect::Native && t.overlay_strength == 40);

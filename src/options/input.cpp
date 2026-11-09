@@ -256,7 +256,7 @@ void Manager::start_remap() {
             if (std::abs(int(SDL_GetGamepadAxis(p, SDL_GamepadAxis(a)))) > threshold) centered = false;
         axis_armed_[a] = centered;
     }
-    message_ = "Remapping controls. Esc keeps the current binding, F9 cancels.";
+    message_ = "Rebinding controls. Esc keeps the current binding.";
 }
 
 std::string Manager::remap_prompt() const {
@@ -342,8 +342,6 @@ bool Manager::handle_event(const SDL_Event& e) {
             const SDL_Scancode sc = e.key.scancode;
             if (sc == SDL_SCANCODE_ESCAPE) {
                 advance();
-            } else if (sc == SDL_SCANCODE_F9) {
-                cancel_remap();
             } else if (!reserved_key(sc)) {
                 assign(key(sc));
             }

@@ -22,6 +22,10 @@ using s64 = std::int64_t;
 
 inline constexpr int kScreenWidth = 240;
 inline constexpr int kScreenHeight = 160;
+// Optional widescreen rendering: the PPU can draw extra columns on each side of the 240-pixel
+// view (whatever the game left in VRAM/OAM there). 164 per side gives a 568-pixel (32:9) line.
+inline constexpr int kMaxWideMargin = 164;
+inline constexpr int kMaxLineWidth = kScreenWidth + 2 * kMaxWideMargin;
 inline constexpr int kAudioRate = 32768;
 inline constexpr u32 kCpuHz = 16777216;
 inline constexpr u32 kCyclesPerLine = 1232;
@@ -60,6 +64,13 @@ public:
     void run_frame();
     // 240x160 pixels, BGR555 (GBA native, bit 15 unused).
     const u16* framebuffer() const { return frame_.data(); }
+    // Widescreen: extra columns per side to render (0 = off, the default). framebuffer() is
+    // always the plain 240x160 view; wide_framebuffer() is wide_width() x 160 with the same
+    // view in the middle.
+    void set_wide_margin(int margin);
+    int wide_margin() const { return wide_margin_; }
+    int wide_width() const { return kScreenWidth + 2 * wide_margin_; }
+    const u16* wide_framebuffer() const { return wide_margin_ ? wide_frame_.data() : frame_.data(); }
     // Bitmask of Key values currently held.
     void set_keys(u16 pressed);
     // Moves generated audio (interleaved stereo s16 at kAudioRate) into out; returns frame count.
@@ -216,13 +227,15 @@ private:
     bool hblank_ = false;
     std::array<s32, 2> bg_ref_x_{}, bg_ref_y_{};  // internal affine reference points (BG2, BG3)
     std::array<u16, kScreenWidth * kScreenHeight> frame_{};
-    // Per-line layer buffers.
-    std::array<std::array<u16, kScreenWidth>, 4> bg_color_{};
-    std::array<std::array<u8, kScreenWidth>, 4> bg_opaque_{};
-    std::array<u16, kScreenWidth> obj_color_{};
-    std::array<u8, kScreenWidth> obj_prio_{};  // 4 = none
-    std::array<u8, kScreenWidth> obj_semi_{};
-    std::array<u8, kScreenWidth> obj_window_{};
+    // Per-line layer buffers, indexed by screen x + wide_margin_.
+    std::array<std::array<u16, kMaxLineWidth>, 4> bg_color_{};
+    std::array<std::array<u8, kMaxLineWidth>, 4> bg_opaque_{};
+    std::array<u16, kMaxLineWidth> obj_color_{};
+    std::array<u8, kMaxLineWidth> obj_prio_{};  // 4 = none
+    std::array<u8, kMaxLineWidth> obj_semi_{};
+    std::array<u8, kMaxLineWidth> obj_window_{};
+    int wide_margin_ = 0;
+    std::vector<u16> wide_frame_;  // wide_width() x kScreenHeight when wide_margin_ > 0
     bool frame_done_ = false;
     u64 frame_count_ = 0;
 

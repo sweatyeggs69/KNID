@@ -87,9 +87,12 @@ void Gba::ppu_render_text_bg(int bg, int y, u16* color, u8* opaque) {
     u32 mh = (io_[0x4C] & 15) + 1, mv = (io_[0x4C] >> 4) + 1;
     u32 yy = mosaic ? u32(y) - u32(y) % mv : u32(y);
     u32 sy = (yy + vofs) & hmask;
-    for (int x = 0; x < kScreenWidth; ++x) {
-        u32 xx = mosaic ? u32(x) - u32(x) % mh : u32(x);
-        u32 sx = (xx + hofs) & wmask;
+    const int m = wide_margin_, width = kScreenWidth + 2 * m;
+    for (int x = 0; x < width; ++x) {
+        const s32 px_screen = x - m;
+        s32 xx = px_screen;
+        if (mosaic) xx -= ((px_screen % s32(mh)) + s32(mh)) % s32(mh);
+        u32 sx = (u32(xx) + hofs) & wmask;
         u32 block = (sx >> 8) + (sy >> 8) * ((size & 1) ? 2 : 1);
         u32 map = screen_base + block * 0x800 + ((sy & 255) >> 3) * 64 + ((sx & 255) >> 3) * 2;
         if (map >= 0x10000) { opaque[x] = 0; continue; }
@@ -121,8 +124,9 @@ void Gba::ppu_render_affine_bg(int bg, u16* color, u8* opaque) {
     s32 size = 128 << ((cnt >> 14) & 3);
     bool wrap = cnt & 0x2000;
     s32 rx = bg_ref_x_[i], ry = bg_ref_y_[i];
-    for (int x = 0; x < kScreenWidth; ++x) {
-        s32 tx = (rx + pa * x) >> 8, ty = (ry + pc * x) >> 8;
+    const int m = wide_margin_, width = kScreenWidth + 2 * m;
+    for (int x = 0; x < width; ++x) {
+        s32 tx = (rx + pa * (x - m)) >> 8, ty = (ry + pc * (x - m)) >> 8;
         if (wrap) {
             tx &= size - 1;
             ty &= size - 1;
@@ -142,8 +146,9 @@ void Gba::ppu_render_bitmap(int mode, u16* color, u8* opaque) {
     s32 rx = bg_ref_x_[0], ry = bg_ref_y_[0];
     u32 frame = (io_[0] & 0x10) ? 0xA000 : 0;
     s32 w = mode == 5 ? 160 : 240, h = mode == 5 ? 128 : 160;
-    for (int x = 0; x < kScreenWidth; ++x) {
-        s32 tx = (rx + pa * x) >> 8, ty = (ry + pc * x) >> 8;
+    const int m = wide_margin_, width = kScreenWidth + 2 * m;
+    for (int x = 0; x < width; ++x) {
+        s32 tx = (rx + pa * (x - m)) >> 8, ty = (ry + pc * (x - m)) >> 8;
         if (tx < 0 || ty < 0 || tx >= w || ty >= h) { opaque[x] = 0; continue; }
         if (mode == 3) {
             color[x] = rd16(&vram_[u32(ty * 240 + tx) * 2]);
@@ -185,7 +190,7 @@ void Gba::ppu_render_objects(int y) {
         bool mosaic = a0 & 0x1000;
         if (mosaic) line -= line % int(mv);
         int ox = a1 & 0x1FF;
-        if (ox >= 240) ox -= 512;
+        if (ox >= 240 + wide_margin_) ox -= 512;  // 9-bit X wraps; wide mode keeps more on the right
         bool c256 = a0 & 0x2000;
         u32 tile = a2 & 0x3FF, prio = (a2 >> 10) & 3, palbank = a2 >> 12;
         s32 pa = 256, pb = 0, pc = 0, pd = 256;
@@ -197,8 +202,8 @@ void Gba::ppu_render_objects(int y) {
             pd = s16(rd16(&oam_[p + 30]));
         }
         for (int bx = 0; bx < bw; ++bx) {
-            int sx = ox + bx;
-            if (sx < 0 || sx >= kScreenWidth) continue;
+            int sx = ox + bx + wide_margin_;  // index into the (possibly wide) line
+            if (sx < 0 || sx >= kScreenWidth + 2 * wide_margin_) continue;
             int tx, ty;
             int mbx = mosaic ? bx - bx % int(mh) : bx;
             if (affine) {
@@ -242,7 +247,11 @@ void Gba::ppu_render_objects(int y) {
 
 void Gba::ppu_render_line(int y) {
     u16 dispcnt = rd16(&io_[0]);
-    u16* out = &frame_[y * kScreenWidth];
+    const int m = wide_margin_, width = kScreenWidth + 2 * m;
+    u16* out = m ? &wide_frame_[std::size_t(y) * std::size_t(width)] : &frame_[y * kScreenWidth];
+    auto finish = [&] {
+        if (m) std::copy(out + m, out + m + kScreenWidth, &frame_[y * kScreenWidth]);
+    };
     auto advance_refs = [&] {
         for (int i = 0; i < 2; ++i) {
             bg_ref_x_[i] += s16(rd16(&io_[0x22 + 16 * i]));  // PB
@@ -250,8 +259,9 @@ void Gba::ppu_render_line(int y) {
         }
     };
     if (dispcnt & 0x80) {
-        std::fill(out, out + kScreenWidth, 0x7FFF);
+        std::fill(out, out + width, 0x7FFF);
         advance_refs();
+        finish();
         return;
     }
     int mode = dispcnt & 7;
@@ -299,11 +309,13 @@ void Gba::ppu_render_line(int y) {
     u32 evy = std::min<u32>(16, io_[0x54] & 31);
     u16 backdrop = rd16(&pal_[0]);
 
-    for (int x = 0; x < kScreenWidth; ++x) {
+    for (int x = 0; x < width; ++x) {
         u8 mask = 0x3F;
         if (any_win) {
-            if (win0 && inside(0, x)) mask = m_win0;
-            else if (win1 && inside(1, x)) mask = m_win1;
+            // Window edges are given in 0..240; the extra columns reuse the nearest edge.
+            const int wx = std::clamp(x - m, 0, kScreenWidth - 1);
+            if (win0 && inside(0, wx)) mask = m_win0;
+            else if (win1 && inside(1, wx)) mask = m_win1;
             else if (objwin && obj_window_[x]) mask = m_obj;
             else mask = m_out;
         }
@@ -337,6 +349,15 @@ void Gba::ppu_render_line(int y) {
         }
         out[x] = c;
     }
+    finish();
+}
+
+void Gba::set_wide_margin(int margin) {
+    margin = std::clamp(margin, 0, kMaxWideMargin);
+    if (margin == wide_margin_) return;
+    wide_margin_ = margin;
+    if (margin) wide_frame_.assign(std::size_t(kScreenWidth + 2 * margin) * kScreenHeight, 0);
+    else wide_frame_.clear();
 }
 
 }  // namespace knid::gba
