@@ -95,7 +95,10 @@ void draw_panel(Updater& u, Config& config, bool popup) {
                                 "and settings are kept.");
             break;
         case State::Failed:
-            ImGui::TextColored(c.bad, "%s", st.message.empty() ? "The update failed." : st.message.c_str());
+            if (st.latest.empty())  // the check itself didn't work: not alarming, it retries next launch
+                ImGui::TextDisabled("%s", st.message.empty() ? "Couldn't check for updates right now." : st.message.c_str());
+            else
+                ImGui::TextColored(c.bad, "%s", st.message.empty() ? "The update failed." : st.message.c_str());
             break;
     }
     if (st.state == State::Available && !st.message.empty()) ImGui::TextColored(c.bad, "%s", st.message.c_str());
