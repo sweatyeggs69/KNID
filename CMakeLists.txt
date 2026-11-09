@@ -25,6 +25,22 @@ else()
     target_compile_options(knid_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# GBA runtime (interpreter, PPU, APU, BIOS HLE). No SDL dependency.
+add_library(knid_gba STATIC
+    src/gba/apu.cpp
+    src/gba/bios.cpp
+    src/gba/bus.cpp
+    src/gba/cpu.cpp
+    src/gba/ppu.cpp
+    src/gba/system.cpp
+)
+target_include_directories(knid_gba PUBLIC src)
+if(MSVC)
+    target_compile_options(knid_gba PRIVATE /W4)
+else()
+    target_compile_options(knid_gba PRIVATE -Wall -Wextra)
+endif()
+
 # SDL3: use a system install if present (brew install sdl3, pacman -S sdl3, vcpkg), else fetch it.
 find_package(SDL3 CONFIG QUIET)
 if(NOT SDL3_FOUND AND KNID_FETCH_SDL)
@@ -41,7 +57,7 @@ endif()
 
 if(TARGET SDL3::SDL3)
     add_executable(knid src/main.cpp)
-    target_link_libraries(knid PRIVATE knid_core SDL3::SDL3)
+    target_link_libraries(knid PRIVATE knid_core knid_gba SDL3::SDL3)
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
 endif()
