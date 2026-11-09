@@ -23,6 +23,7 @@
 #include "app/app.h"
 #include "app/bmp.h"
 #include "app/config.h"
+#include "app/fsutil.h"
 #include "app/licenses.h"
 #include "app/platform.h"
 #include "app/save_import.h"
@@ -47,6 +48,7 @@ struct Options {
     bool open_settings = false;
     std::string open_tab, state_script;
     bool mute = false, silent_audio = false;
+    bool prepare = false;  // --prepare: check the ROM and remember it, without a window
     int window_w = 0, window_h = 0;
     std::filesystem::path import_save, export_save;
     long frames = -1;  // stop after this many frames (-1: run until closed)
@@ -79,6 +81,8 @@ void usage() {
         "  --window WxH       initial window size, e.g. 1280x800\n"
         "  --licenses         print the license texts (KNID, third-party notices, fonts)\n"
         "  --mute             no sound (opens no audio device; settings are not changed)\n"
+        "  --prepare --game <rom>  check the ROM and remember it as the launcher's ROM, without a\n"
+        "                     window; prints \"progress <0..1> <text>\" lines (for RecompLauncher)\n"
         "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
         "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
         "      Backspace/Right Shift = Select (remap them in the settings menu)\n"
@@ -101,9 +105,12 @@ void attach_console(bool force) {
 
 int main(int argc, char** argv) {
 #if defined(_WIN32)
-    bool force_console = false;
-    for (int i = 1; i < argc; ++i) force_console |= std::string(argv[i]) == "--console";
-    attach_console(force_console);
+    bool force_console = false, prepare = false;
+    for (int i = 1; i < argc; ++i) {
+        force_console |= std::string(argv[i]) == "--console";
+        prepare |= std::string(argv[i]) == "--prepare";
+    }
+    if (!prepare) attach_console(force_console);  // --prepare output goes to the caller's pipe
 #endif
     Options opt;
     for (int i = 1; i < argc; ++i) {
@@ -131,6 +138,8 @@ int main(int argc, char** argv) {
         }
         else if (a == "--state-script") opt.state_script = next();
         else if (a == "--mute") opt.mute = true;
+        else if (a == "--prepare") opt.prepare = true;
+        else if (a == "--game") opt.rom = next_path();
         else if (a == "--window") std::sscanf(next().c_str(), "%dx%d", &opt.window_w, &opt.window_h);
         else if (a == "--check-update") opt.update = "check";
         else if (a == "--update-now") opt.update = "install";
@@ -143,6 +152,32 @@ int main(int argc, char** argv) {
         else opt.rom = knid::utf8_path(a);
     }
     bool gui = !opt.headless;
+
+    // Setup step for RecompLauncher: the same check and settings as picking the ROM in the
+    // launcher. Exit codes: 0 ok, 2 file not found, 3 not the supported dump.
+    if (opt.prepare) {
+        auto progress = [](const char* p, const char* text) {
+            std::printf("progress %s %s\n", p, text);
+            std::fflush(stdout);
+        };
+        progress("0.1", "Checking your ROM");
+        std::error_code ec;
+        if (opt.rom.empty() || !std::filesystem::exists(opt.rom, ec)) {
+            fail("The ROM file could not be found: " + opt.rom.string(), false);
+            return 2;
+        }
+        knid::VerifiedRom v = knid::verify_rom(opt.rom);
+        if (!v.ok) {
+            fail(v.error, false);
+            return 3;
+        }
+        progress("0.9", "Saving your ROM choice");
+        knid::Config config(opt.pref_dir);
+        config.set_string("rom.path", knid::path_utf8(v.path));
+        config.set_string("rom.sha1", v.rom.sha1);
+        progress("1", "Ready");
+        return 0;
+    }
 
     if (!opt.import_save.empty() || !opt.export_save.empty()) {
         knid::Config config(opt.pref_dir);
