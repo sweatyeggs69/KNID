@@ -34,7 +34,14 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          if ctest --test-dir build --output-on-failure > ctest.log 2>&1; then
+            cat ctest.log
+          else
+            cat ctest.log
+            echo "::error title=ctest (macOS)::$(tail -n 40 ctest.log | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
       - name: Package
         run: cmake --build build --target dmg
       - uses: actions/upload-artifact@v4
@@ -72,7 +79,15 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        shell: bash
+        run: |
+          if ctest --test-dir build -C Release --output-on-failure > ctest.log 2>&1; then
+            cat ctest.log
+          else
+            cat ctest.log
+            echo "::error title=ctest (Windows)::$(tail -n 40 ctest.log | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
       - name: Package
         run: cmake --build build --config Release --target package_zip
       - uses: actions/upload-artifact@v4
@@ -107,20 +122,37 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          if ctest --test-dir build --output-on-failure > ctest.log 2>&1; then
+            cat ctest.log
+          else
+            cat ctest.log
+            echo "::error title=ctest (Linux)::$(tail -n 40 ctest.log | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
       - name: AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
           ARCH: x86_64
         run: |
-          VERSION=$(grep -oP 'project\(knid LANGUAGES C CXX VERSION \K[0-9.]+' CMakeLists.txt)
-          DESTDIR="$PWD/AppDir" cmake --install build
-          cp packaging/linux/knid.desktop AppDir/knid.desktop
-          cp build/knid.png AppDir/knid.png
-          ln -sf usr/bin/knid AppDir/AppRun
-          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
-          chmod +x appimagetool
-          ./appimagetool AppDir "KNID-${VERSION}-x86_64.AppImage"
+          set -o pipefail
+          fail() {
+            echo "::error title=AppImage::$(tail -n 40 appimage.log | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          }
+          {
+            set -ex
+            VERSION=$(sed -n 's/^project(knid LANGUAGES C CXX VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+            DESTDIR="$PWD/AppDir" cmake --install build
+            cp packaging/linux/knid.desktop AppDir/knid.desktop
+            cp build/knid.png AppDir/knid.png
+            ln -sf usr/bin/knid AppDir/AppRun
+            find AppDir -maxdepth 4 | sort
+            curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
+            chmod +x appimagetool
+            ./appimagetool AppDir "KNID-${VERSION}-x86_64.AppImage"
+          } > appimage.log 2>&1 || { cat appimage.log; fail; }
+          cat appimage.log
       - uses: actions/upload-artifact@v4
         with:
           name: KNID-Linux
