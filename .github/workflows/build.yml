@@ -175,13 +175,13 @@ jobs:
             find AppDir -maxdepth 4 | sort
             curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
             chmod +x appimagetool
-            ./appimagetool AppDir "KNID-${VERSION}-x86_64.AppImage"
+            ./appimagetool AppDir "KNID-${VERSION}-Linux-x64.AppImage"
           } > appimage.log 2>&1 || { cat appimage.log; fail; }
           cat appimage.log
       - uses: actions/upload-artifact@v4
         with:
           name: KNID-Linux
-          path: KNID-*-x86_64.AppImage
+          path: KNID-*-Linux-x64.AppImage
           if-no-files-found: error
 
   release:
@@ -211,7 +211,7 @@ jobs:
           [ "${#apps[@]}" -eq 3 ] || { echo "::error::expected exactly 3 app files in dist/"; exit 1; }
           for f in dist/*; do
             case "$(basename "$f")" in
-              KNID-*-macOS.dmg|KNID-*-Windows-x64.exe|KNID-*-x86_64.AppImage|recomplauncher.json) ;;
+              KNID-*-macOS.dmg|KNID-*-Windows-x64.exe|KNID-*-Linux-x64.AppImage|recomplauncher.json) ;;
               *) echo "::error::unexpected file in dist/: $f"; exit 1 ;;
             esac
           done
@@ -221,7 +221,7 @@ jobs:
           files: |
             dist/KNID-*-macOS.dmg
             dist/KNID-*-Windows-x64.exe
-            dist/KNID-*-x86_64.AppImage
+            dist/KNID-*-Linux-x64.AppImage
             dist/SHA256SUMS.txt
             dist/recomplauncher.json
           generate_release_notes: true
@@ -235,4 +235,4 @@ jobs:
           files: |
             dist/KNID-*-macOS.dmg
             dist/KNID-*-Windows-x64.exe
-            dist/KNID-*-x86_64.AppImage
+            dist/KNID-*-Linux-x64.AppImage

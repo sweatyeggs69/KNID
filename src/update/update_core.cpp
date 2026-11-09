@@ -305,7 +305,7 @@ const char* asset_suffix(Platform p) {
     switch (p) {
         case Platform::MacOS: return "-macOS.dmg";
         case Platform::Windows: return "-Windows-x64.exe";
-        case Platform::LinuxX64: return "-x86_64.AppImage";
+        case Platform::LinuxX64: return "-Linux-x64.AppImage";
         default: return nullptr;
     }
 }

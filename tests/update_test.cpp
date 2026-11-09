@@ -71,8 +71,8 @@ int main() {
          "browser_download_url": "https://github.com/sweatyeggs69/KNID/releases/download/v1.2.0/KNID-1.2.0-macOS.dmg"},
         {"name": "KNID-1.2.0-Windows-x64.exe", "size": 3000000, "digest": null,
          "browser_download_url": "https://github.com/sweatyeggs69/KNID/releases/download/v1.2.0/KNID-1.2.0-Windows-x64.exe"},
-        {"name": "KNID-1.2.0-x86_64.AppImage", "size": 5000000, "uploader": {"login": "github-actions[bot]", "id": 41898282},
-         "browser_download_url": "https://github.com/sweatyeggs69/KNID/releases/download/v1.2.0/KNID-1.2.0-x86_64.AppImage"},
+        {"name": "KNID-1.2.0-Linux-x64.AppImage", "size": 5000000, "uploader": {"login": "github-actions[bot]", "id": 41898282},
+         "browser_download_url": "https://github.com/sweatyeggs69/KNID/releases/download/v1.2.0/KNID-1.2.0-Linux-x64.AppImage"},
         {"name": "SHA256SUMS.txt", "size": 300,
          "browser_download_url": "https://github.com/sweatyeggs69/KNID/releases/download/v1.2.0/SHA256SUMS.txt"}
       ], "reactions": {"+1": 2}, "mentions_count": 1.5e1
@@ -91,7 +91,7 @@ int main() {
         const Asset* win = pick_asset(*rel, Platform::Windows);
         CHECK(win && win->name == "KNID-1.2.0-Windows-x64.exe" && win->sha256.empty());
         const Asset* lin = pick_asset(*rel, Platform::LinuxX64);
-        CHECK(lin && lin->name == "KNID-1.2.0-x86_64.AppImage");
+        CHECK(lin && lin->name == "KNID-1.2.0-Linux-x64.AppImage");
         CHECK(pick_asset(*rel, Platform::Other) == nullptr);
         CHECK(rel->find("SHA256SUMS.txt") != nullptr);
 
@@ -115,11 +115,11 @@ int main() {
     std::string sums =
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  KNID-1.2.0-macOS.dmg\n"
         "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD *KNID-1.2.0-Windows-x64.exe\r\n"
-        "nothex  KNID-1.2.0-x86_64.AppImage\n"
-        "248d6a61d20638b8e5c0262693c3d0f4ad1c8b80a4da07ec7e15e0f47b3f5f59  ./KNID-1.2.0-x86_64.AppImage";
+        "nothex  KNID-1.2.0-Linux-x64.AppImage\n"
+        "248d6a61d20638b8e5c0262693c3d0f4ad1c8b80a4da07ec7e15e0f47b3f5f59  ./KNID-1.2.0-Linux-x64.AppImage";
     CHECK(checksum_for(sums, "KNID-1.2.0-macOS.dmg") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     CHECK(checksum_for(sums, "KNID-1.2.0-Windows-x64.exe") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-    CHECK(checksum_for(sums, "KNID-1.2.0-x86_64.AppImage") == "248d6a61d20638b8e5c0262693c3d0f4ad1c8b80a4da07ec7e15e0f47b3f5f59");
+    CHECK(checksum_for(sums, "KNID-1.2.0-Linux-x64.AppImage") == "248d6a61d20638b8e5c0262693c3d0f4ad1c8b80a4da07ec7e15e0f47b3f5f59");
     CHECK(checksum_for(sums, "KNID-1.2.0-macOS.dm").empty());
     CHECK(checksum_for(sums, "missing").empty());
 

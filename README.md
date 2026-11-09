@@ -29,7 +29,7 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 | --- | --- | --- |
 | macOS 11 or newer (Apple Silicon and Intel) | `KNID-<version>-macOS.dmg` | Drag KNID into Applications. Right-click KNID and choose **Open**, then **Open** again. |
 | Windows 10 or 11 (64-bit) | `KNID-<version>-Windows-x64.exe` | One self-contained file: put it in a folder you like and run it. If SmartScreen appears, choose **More info**, then **Run anyway**. |
-| Linux (x86_64) | `KNID-<version>-x86_64.AppImage` | Run `chmod +x KNID-*.AppImage`, then start it. |
+| Linux (x86_64) | `KNID-<version>-Linux-x64.AppImage` | Run `chmod +x KNID-*.AppImage`, then start it. |
 
 ### Verify your download
 
@@ -131,7 +131,7 @@ Never commit ROMs, BIOS files, saves, states or screenshots of the game.
 - **Releases:** bump `VERSION` in `project(knid ...)` in `CMakeLists.txt`, then push a matching tag
   like `v1.0.0`. GitHub Actions builds all three platforms and publishes the release. Keep the file
   names (`KNID-<version>-macOS.dmg`, `KNID-<version>-Windows-x64.exe`,
-  `KNID-<version>-x86_64.AppImage`, `SHA256SUMS.txt`, plus `recomplauncher.json` when the repository
+  `KNID-<version>-Linux-x64.AppImage`, `SHA256SUMS.txt`, plus `recomplauncher.json` when the repository
   has it); the in-app updater looks for them.
 - **VirusTotal links:** add a repository secret `VT_API_KEY` (free VirusTotal account, Profile >
   API key) under Settings > Secrets and variables > Actions.
