@@ -12,7 +12,11 @@
 #include <string>
 #include <vector>
 
+#include "app/config.h"
 #include "gba/gba.h"
+#include "options/input.h"
+#include "options/options_panel.h"
+#include "options/presenter.h"
 #include "rom.h"
 #include "sha1.h"
 
@@ -63,46 +67,8 @@ bool write_bmp(const std::string& path, const std::uint16_t* px) {
     return bool(f);
 }
 
-std::uint16_t read_keys(SDL_Gamepad* pad) {
-    using namespace knid::gba;
-    const bool* k = SDL_GetKeyboardState(nullptr);
-    std::uint16_t keys = 0;
-    if (k[SDL_SCANCODE_X]) keys |= kKeyA;
-    if (k[SDL_SCANCODE_Z]) keys |= kKeyB;
-    if (k[SDL_SCANCODE_BACKSPACE] || k[SDL_SCANCODE_RSHIFT]) keys |= kKeySelect;
-    if (k[SDL_SCANCODE_RETURN]) keys |= kKeyStart;
-    if (k[SDL_SCANCODE_RIGHT]) keys |= kKeyRight;
-    if (k[SDL_SCANCODE_LEFT]) keys |= kKeyLeft;
-    if (k[SDL_SCANCODE_UP]) keys |= kKeyUp;
-    if (k[SDL_SCANCODE_DOWN]) keys |= kKeyDown;
-    if (k[SDL_SCANCODE_S]) keys |= kKeyR;
-    if (k[SDL_SCANCODE_A]) keys |= kKeyL;
-    if (pad) {
-        auto b = [&](SDL_GamepadButton btn) { return SDL_GetGamepadButton(pad, btn); };
-        const std::int16_t dead = 12000;
-        std::int16_t ax = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX);
-        std::int16_t ay = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
-        if (b(SDL_GAMEPAD_BUTTON_SOUTH)) keys |= kKeyA;
-        if (b(SDL_GAMEPAD_BUTTON_EAST)) keys |= kKeyB;
-        if (b(SDL_GAMEPAD_BUTTON_WEST)) keys |= kKeyB;
-        if (b(SDL_GAMEPAD_BUTTON_NORTH)) keys |= kKeyA;
-        if (b(SDL_GAMEPAD_BUTTON_BACK)) keys |= kKeySelect;
-        if (b(SDL_GAMEPAD_BUTTON_START)) keys |= kKeyStart;
-        if (b(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) keys |= kKeyL;
-        if (b(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) keys |= kKeyR;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_UP) || ay < -dead) keys |= kKeyUp;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_DOWN) || ay > dead) keys |= kKeyDown;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_LEFT) || ax < -dead) keys |= kKeyLeft;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || ax > dead) keys |= kKeyRight;
-    }
-    // Opposite directions cannot be pressed at once on real hardware.
-    if ((keys & kKeyLeft) && (keys & kKeyRight)) keys &= ~(kKeyLeft | kKeyRight);
-    if ((keys & kKeyUp) && (keys & kKeyDown)) keys &= ~(kKeyUp | kKeyDown);
-    return keys;
-}
-
 struct Options {
-    std::filesystem::path rom, bios, dump_frame, dump_audio;
+    std::filesystem::path rom, bios, dump_frame, dump_audio, screenshot;
     bool test_pattern = false, headless = false, verbose = false;
     long frames = -1;  // stop after this many frames (-1: run until closed)
     std::string script;  // headless input script: "frame:keys,frame:keys" (keys as hex mask)
@@ -119,8 +85,11 @@ void usage() {
         "  --dump-audio <wav> write headless audio to a WAV file\n"
         "  --input <script>   headless input, e.g. 300:8,310:0 (frame:hex key mask)\n"
         "  --verbose          log unimplemented BIOS calls\n"
-        "keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
-        "      Backspace/Right Shift = Select, F11 = fullscreen, Esc = quit\n");
+        "  --screenshot <bmp> save the window as shown (with display options) on the last --frames frame\n"
+        "default keys: arrows = D-pad, X = A, Z = B, A = L, S = R, Enter = Start,\n"
+        "      Backspace/Right Shift = Select (F9 in game remaps, Shift+F9 resets)\n"
+        "display: F1 help, F2 scaling, F3 aspect, F4 overlay, F5 overlay strength,\n"
+        "      F6 GBA colors, F7 frame blending, F11 fullscreen, Esc quit\n");
 }
 }  // namespace
 
@@ -137,6 +106,7 @@ int main(int argc, char** argv) {
         else if (a == "--input") opt.script = next();
         else if (a == "--dump-audio") opt.dump_audio = next();
         else if (a == "--verbose") opt.verbose = true;
+        else if (a == "--screenshot") opt.screenshot = next();
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else opt.rom = a;
     }
@@ -247,10 +217,13 @@ int main(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
-    SDL_SetRenderLogicalPresentation(renderer, kGbaWidth, kGbaHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-    SDL_Texture* screen = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING,
-                                            kGbaWidth, kGbaHeight);
-    SDL_SetTextureScaleMode(screen, SDL_SCALEMODE_NEAREST);
+    knid::Config config;
+    // Owned here so they are released before the renderer and SDL shut down.
+    auto presenter_ptr = std::make_unique<knid::Presenter>(renderer, knid::settings_io(config));
+    auto controls_ptr = std::make_unique<knid::input::Manager>(knid::settings_io(config));
+    auto& presenter = *presenter_ptr;
+    auto& controls = *controls_ptr;
+    std::printf("Settings: %s\n", config.file().string().c_str());
 
     SDL_AudioSpec spec{SDL_AUDIO_S16, 2, knid::gba::kAudioRate};
     SDL_AudioStream* audio_stream =
@@ -258,7 +231,6 @@ int main(int argc, char** argv) {
     if (audio_stream) SDL_ResumeAudioStreamDevice(audio_stream);
     else std::fprintf(stderr, "knid: no audio (%s)\n", SDL_GetError());
 
-    SDL_Gamepad* pad = nullptr;
     std::array<std::uint16_t, kGbaWidth * kGbaHeight> pattern{};
     std::vector<std::int16_t> audio;
     bool running = true;
@@ -269,14 +241,14 @@ int main(int argc, char** argv) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) running = false;
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F11)
+            if (controls.handle_event(e)) continue;  // captured by an F9 remap
+            if (e.type != SDL_EVENT_KEY_DOWN || e.key.repeat) continue;
+            if (e.key.key == SDLK_ESCAPE) running = false;
+            else if (e.key.key == SDLK_F11)
                 SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
-            if (e.type == SDL_EVENT_GAMEPAD_ADDED && !pad) pad = SDL_OpenGamepad(e.gdevice.which);
-            if (e.type == SDL_EVENT_GAMEPAD_REMOVED && pad && SDL_GetGamepadID(pad) == e.gdevice.which) {
-                SDL_CloseGamepad(pad);
-                pad = nullptr;
-            }
+            else if (e.key.key == SDLK_F9 && (e.key.mod & SDL_KMOD_SHIFT)) controls.reset_to_defaults();
+            else if (e.key.key == SDLK_F9) controls.start_remap();
+            else presenter.handle_key(e.key);
         }
 
         const std::uint16_t* pixels;
@@ -284,7 +256,7 @@ int main(int argc, char** argv) {
             draw_test_pattern(pattern, std::uint32_t(frame));
             pixels = pattern.data();
         } else {
-            gba->set_keys(read_keys(pad));
+            gba->set_keys(controls.poll());
             gba->run_frame();
             audio.clear();
             gba->take_audio(audio);
@@ -294,11 +266,10 @@ int main(int argc, char** argv) {
                 SDL_PutAudioStreamData(audio_stream, audio.data(), int(audio.size() * sizeof(std::int16_t)));
             pixels = gba->framebuffer();
         }
-        SDL_UpdateTexture(screen, nullptr, pixels, kGbaWidth * sizeof(std::uint16_t));
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-        SDL_RenderTexture(renderer, screen, nullptr, nullptr);
-        SDL_RenderPresent(renderer);
+        if (std::string m = controls.take_message(); !m.empty()) presenter.show_message(m);
+        if (!opt.screenshot.empty() && opt.frames >= 0 && frame + 1 == opt.frames)
+            presenter.capture_next(opt.screenshot.string());
+        presenter.present(pixels, controls.remap_prompt());
 
         ++frame;
         if (opt.frames >= 0 && frame >= opt.frames) running = false;
@@ -310,9 +281,9 @@ int main(int argc, char** argv) {
 
     if (!opt.dump_frame.empty()) write_bmp(opt.dump_frame.string(), gba->framebuffer());
     gba.reset();  // flushes the save
-    if (pad) SDL_CloseGamepad(pad);
+    controls_ptr.reset();
+    presenter_ptr.reset();
     if (audio_stream) SDL_DestroyAudioStream(audio_stream);
-    SDL_DestroyTexture(screen);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

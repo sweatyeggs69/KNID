@@ -25,6 +25,15 @@ else()
     target_compile_options(knid_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# Display post-processing (scaling layout, GBA colors, frame blending, overlays). No SDL.
+add_library(knid_display STATIC src/options/display.cpp)
+target_include_directories(knid_display PUBLIC src)
+if(MSVC)
+    target_compile_options(knid_display PRIVATE /W4)
+else()
+    target_compile_options(knid_display PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 # GBA runtime (interpreter, PPU, APU, BIOS HLE). No SDL dependency.
 add_library(knid_gba STATIC
     src/gba/apu.cpp
@@ -78,9 +87,11 @@ if(TARGET SDL3::SDL3)
     # Options panel (owned by the options work; display.* / input.* settings).
     add_library(knid_options STATIC
         src/options/options_panel.cpp
+        src/options/presenter.cpp
+        src/options/input.cpp
     )
     target_include_directories(knid_options PUBLIC src)
-    target_link_libraries(knid_options PUBLIC imgui)
+    target_link_libraries(knid_options PUBLIC imgui knid_display knid_app SDL3::SDL3)
 
     # App layer: settings, launcher UI. Uses SDL (pref path, dialogs).
     add_library(knid_app STATIC
@@ -100,6 +111,9 @@ if(KNID_BUILD_TESTS)
     add_executable(knid_romcheck tests/romcheck.cpp)
     target_link_libraries(knid_romcheck PRIVATE knid_core)
     add_test(NAME sha1_selftest COMMAND knid_romcheck --selftest)
+    add_executable(knid_display_test tests/display_test.cpp)
+    target_link_libraries(knid_display_test PRIVATE knid_display)
+    add_test(NAME display_options COMMAND knid_display_test)
 endif()
 
 # Analysis tools. Their output is derived from the ROM and goes to generated/ (gitignored).
