@@ -58,6 +58,13 @@ SHA-256 checksums. See the notes of the [latest release](https://github.com/swea
 - **Automatic updates** with your OK, without touching your saves.
 - **Optional BIOS** with the original boot animation (not required).
 - **One-click shortcut** to start the game directly.
+- **Works with [RecompLauncher](https://recomplauncher.com)**.
+
+### Works with RecompLauncher
+
+KNID works with [RecompLauncher](https://recomplauncher.com), which installs and updates it from
+these releases. Pick your ROM there and it is checked against the verified USA dump, set as KNID's
+game, and started with Play. The display settings show on the game's page too.
 
 ## Controls
 
