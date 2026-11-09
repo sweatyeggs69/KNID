@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <mutex>
@@ -28,6 +29,8 @@
 #include "options/display.h"
 #include "options/presenter.h"
 #include "sha1.h"
+#include "update/update_ui.h"
+#include "update/updater.h"
 
 namespace knid {
 namespace fs = std::filesystem;
@@ -118,6 +121,7 @@ private:
     SDL_AudioStream* audio_ = nullptr;
     std::unique_ptr<Presenter> presenter_;           // in-game video (display.* options)
     std::unique_ptr<input::Manager> controls_;       // keyboard/gamepad (input.* options)
+    std::unique_ptr<update::Updater> updater_;       // GitHub Releases updates (updates.* options)
 
     Screen screen_ = Screen::FirstRun;
     VerifiedRom rom_;
@@ -197,7 +201,9 @@ bool App::init_window() {
     toast::set_renderer(renderer_);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
     controls_ = std::make_unique<input::Manager>(settings_io(config_));
+    updater_ = std::make_unique<update::Updater>(KNID_VERSION);
     if (opt_.open_tab == "states") register_options_tab("States", [this](Config&) { draw_states_tab(); });
+    if (opt_.open_tab == "updates") register_options_tab("Updates", [this](Config& c) { update_ui::draw_tab(*updater_, c); });
     register_options_tab("Game", [this](Config& c) { draw_game_tab(c); });
     register_options_tab("States", [this](Config&) { draw_states_tab(); });
     slot_ = std::clamp(config_.get_int("states.slot", 1), 1, states::kSlots);
@@ -212,6 +218,10 @@ bool App::init_window() {
                              show_toast("Save state slot " + std::to_string(slot_) + (i.exists ? "" : " (empty)"),
                                         i.exists ? slot_ : -1, toast::Style::Info);
                          }});
+    register_options_tab("Updates", [this](Config& c) { update_ui::draw_tab(*updater_, c); });
+    update_ui::set_restart_handler([this] { running_ = false; });  // relaunched after shutdown()
+    // No network in scripted test runs, unless a test feed is set.
+    if (opt_.frames < 0 || std::getenv("KNID_UPDATE_URL")) update_ui::init(*updater_, config_);
     SDL_ShowWindow(window_);
     return true;
 }
@@ -576,6 +586,7 @@ void App::draw_launcher() {
         ImGui::PopTextWrapPos();
     }
     ImGui::PopFont();
+    update_ui::draw_launcher_notice(*updater_, config_);
 
     if (ImGui::BeginPopupModal("Create a shortcut", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
@@ -1268,6 +1279,7 @@ int App::run() {
     while (running_) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) handle_event(e);
+        update_ui::tick(*updater_, config_);
         {
             std::lock_guard<std::mutex> lock(pick_mutex_);
             if (picked_rom_) { accept_rom(utf8_path(*picked_rom_)); picked_rom_.reset(); }
@@ -1410,6 +1422,7 @@ int App::run() {
     }
     if (!opt_.dump_frame.empty() && game_) write_bmp(opt_.dump_frame.string(), game_->framebuffer());
     shutdown();
+    updater_->relaunch();  // only does something after an update was installed
     return 0;
 }
 

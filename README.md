@@ -73,6 +73,10 @@ or `sha256sum <file>` (Linux), and compare it with the line in `SHA256SUMS.txt`.
   and play the original boot animation.
 - **Shortcuts.** One shortcut per place (Applications or Start menu, and Desktop), kept up to
   date instead of duplicated.
+- **Updates built in.** KNID checks this repository's releases when it opens, shows what's new,
+  and on your OK downloads the new version, checks it against the release's SHA-256 checksums
+  and restarts into it. Your saves, save states and settings are never touched. Turn the check
+  off in Settings > Updates.
 
 ## Controls
 
@@ -199,7 +203,11 @@ original artwork (like the procedural icon in `docs/`) belongs here.
 
 ### For maintainers
 
-Releases are built by GitHub Actions when a tag like `v0.1.0` is pushed. To get VirusTotal links
+Releases are built by GitHub Actions when a tag like `v0.1.0` is pushed. Bump `VERSION` in
+`project(knid ...)` in `CMakeLists.txt` first: the tag must match it (the build checks), because
+the in-app updater compares that version with the latest release. Keep the release file names
+(`KNID-<version>-macOS.dmg`, `KNID-<version>-Windows-x64.zip`, `KNID-<version>-x86_64.AppImage`,
+`SHA256SUMS.txt`), since the updater looks for them. To get VirusTotal links
 in the release notes, add a repository secret named `VT_API_KEY` (a free VirusTotal account works:
 Profile > API key) under **Settings > Secrets and variables > Actions**. Without it, releases are
 still published, just without the scan links.
