@@ -24,6 +24,7 @@
 #include "app/bmp.h"
 #include "app/config.h"
 #include "app/fsutil.h"
+#include "app/licenses.h"
 #include "app/platform.h"
 #include "app/save_import.h"
 #include "gba/gba.h"
@@ -78,6 +79,7 @@ void usage() {
         "  --verbose          log unimplemented BIOS calls\n"
         "  --console          (Windows) open a console window for log output\n"
         "  --window WxH       initial window size, e.g. 1280x800\n"
+        "  --licenses         print the license texts (KNID, third-party notices, fonts)\n"
         "  --mute             no sound (opens no audio device; settings are not changed)\n"
         "  --prepare --game <rom>  check the ROM and remember it as the launcher's ROM, without a\n"
         "                     window; prints \"progress <0..1> <text>\" lines (for RecompLauncher)\n"
@@ -146,6 +148,7 @@ int main(int argc, char** argv) {
         else if (a == "--export-save") opt.export_save = next_path();
         else if (a.rfind("-psn_", 0) == 0) {}  // added by older macOS launch services
         else if (a == "-h" || a == "--help") { usage(); return 0; }
+        else if (a == "--licenses") { knid::licenses::print_all(); return 0; }
         else opt.rom = knid::utf8_path(a);
     }
     bool gui = !opt.headless;

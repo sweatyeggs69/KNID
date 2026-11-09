@@ -89,11 +89,25 @@ jobs:
             exit 1
           fi
       - name: Package
-        run: cmake --build build --config Release --target package_zip
+        run: cmake --build build --config Release --target package_exe
+      - name: Check the exe is self-contained
+        # Only Windows system DLLs may be imported (no MSVC runtime, SDL, zlib or other DLLs).
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find "VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          $exe = Get-ChildItem build -Filter "KNID-*-Windows-x64.exe" | Select-Object -First 1
+          $deps = & $dumpbin /nologo /dependents $exe.FullName | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\.dll$' }
+          Write-Host "Imports:"; $deps | ForEach-Object { Write-Host "  $_" }
+          $bad = $deps | Where-Object {
+            $_ -match '^(vcruntime|msvcp|concrt|vccorlib|ucrtbased|api-ms-win-crt|sdl|zlib|z\.dll|libpng|libcurl)' -or
+            -not (Test-Path (Join-Path "$env:SystemRoot\System32" $_))
+          }
+          if ($bad) { Write-Host "::error title=Not self-contained::KNID.exe imports non-system DLLs: $($bad -join ', ')"; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: KNID-Windows
-          path: build/KNID-*-Windows-x64.zip
+          path: build/KNID-*-Windows-x64.exe
           if-no-files-found: error
 
   linux:
@@ -157,6 +171,7 @@ jobs:
             cp packaging/linux/knid.desktop AppDir/knid.desktop
             cp build/knid.png AppDir/knid.png
             ln -sf usr/bin/knid AppDir/AppRun
+            if [ -f recomplauncher.json ]; then cp recomplauncher.json AppDir/recomplauncher.json; fi
             find AppDir -maxdepth 4 | sort
             curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
             chmod +x appimagetool
@@ -179,21 +194,24 @@ jobs:
     env:
       VT_API_KEY: ${{ secrets.VT_API_KEY }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - name: Check release files
-        # Only the three built apps may be published or scanned (CI never has game files).
+        # Only the three built apps (plus the RecompLauncher metadata, when the repository has it)
+        # are published; CI never has game files.
         run: |
           set -e
+          if [ -f recomplauncher.json ]; then cp recomplauncher.json dist/recomplauncher.json; fi
           ls -la dist
           shopt -s nullglob
-          files=(dist/*)
-          [ "${#files[@]}" -eq 3 ] || { echo "::error::expected exactly 3 files in dist/"; exit 1; }
-          for f in "${files[@]}"; do
+          apps=(dist/KNID-*)
+          [ "${#apps[@]}" -eq 3 ] || { echo "::error::expected exactly 3 app files in dist/"; exit 1; }
+          for f in dist/*; do
             case "$(basename "$f")" in
-              KNID-*-macOS.dmg|KNID-*-Windows-x64.zip|KNID-*-x86_64.AppImage) ;;
+              KNID-*-macOS.dmg|KNID-*-Windows-x64.exe|KNID-*-x86_64.AppImage|recomplauncher.json) ;;
               *) echo "::error::unexpected file in dist/: $f"; exit 1 ;;
             esac
           done
@@ -202,9 +220,10 @@ jobs:
         with:
           files: |
             dist/KNID-*-macOS.dmg
-            dist/KNID-*-Windows-x64.zip
+            dist/KNID-*-Windows-x64.exe
             dist/KNID-*-x86_64.AppImage
             dist/SHA256SUMS.txt
+            dist/recomplauncher.json
           generate_release_notes: true
       - name: VirusTotal scan links in the release notes
         if: env.VT_API_KEY != ''
@@ -215,5 +234,5 @@ jobs:
           update_release_body: true
           files: |
             dist/KNID-*-macOS.dmg
-            dist/KNID-*-Windows-x64.zip
+            dist/KNID-*-Windows-x64.exe
             dist/KNID-*-x86_64.AppImage

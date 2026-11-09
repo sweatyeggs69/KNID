@@ -190,6 +190,18 @@ if(TARGET SDL3::SDL3)
             COMMENT "Embedding Fredoka ${weight}")
         list(APPEND knid_font_cpp "${out}")
     endforeach()
+    # License texts compiled in (shown in F1 > About and by --licenses).
+    foreach(pair "license;LICENSE" "notices;THIRD_PARTY_NOTICES.md" "fredoka_ofl;assets/fonts/OFL.txt")
+        list(GET pair 0 name)
+        list(GET pair 1 file)
+        set(out "${CMAKE_CURRENT_BINARY_DIR}/text_${name}.cpp")
+        add_custom_command(OUTPUT "${out}"
+            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/${file} -DOUTPUT=${out}
+                    -DSYMBOL=knid_text_${name} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+            DEPENDS ${file} cmake/embed.cmake
+            COMMENT "Embedding ${file}")
+        list(APPEND knid_font_cpp "${out}")
+    endforeach()
     add_library(knid_launcher STATIC
         src/app/achievements.cpp
         src/app/credentials.cpp
@@ -197,6 +209,7 @@ if(TARGET SDL3::SDL3)
         src/app/app.cpp
         src/app/platform.cpp
         src/app/theme.cpp
+        src/app/licenses.cpp
         src/app/toast.cpp
         ${knid_font_cpp}
     )
@@ -246,20 +259,13 @@ if(TARGET SDL3::SDL3)
         knid_configure_bundle(knid)
     endif()
     if(KNID_PACKAGE AND WIN32)
-        # Portable zip: KNID.exe + readme + licenses.
-        set(stage "${CMAKE_CURRENT_BINARY_DIR}/zip-stage/KNID")
-        set(zip "${CMAKE_CURRENT_BINARY_DIR}/KNID-${PROJECT_VERSION}-Windows-x64.zip")
-        add_custom_target(package_zip
-            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CMAKE_CURRENT_BINARY_DIR}/zip-stage" "${zip}"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${stage}/licenses"
-            COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:knid>" "${stage}/"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/packaging/README-Windows.txt" "${stage}/Read Me.txt"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/LICENSE" "${stage}/LICENSE.txt"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${stage}/"
-            COMMAND "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/assets/fonts/OFL.txt" "${stage}/licenses/Fredoka-OFL.txt"
-            COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_CURRENT_BINARY_DIR}/zip-stage" "${CMAKE_COMMAND}" -E tar cf "${zip}" --format=zip KNID
+        # Release file: the single self-contained KNID.exe (static runtime, SDL, zlib; licenses
+        # embedded, see F1 > About and --licenses), copied under its release name.
+        set(knid_release_exe "${CMAKE_CURRENT_BINARY_DIR}/KNID-${PROJECT_VERSION}-Windows-x64.exe")
+        add_custom_target(package_exe
+            COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:knid>" "${knid_release_exe}"
             DEPENDS knid
-            COMMENT "Building ${zip}"
+            COMMENT "Building ${knid_release_exe}"
             VERBATIM)
     endif()
     if(KNID_PACKAGE AND UNIX AND NOT APPLE)

@@ -30,6 +30,12 @@ function(knid_configure_bundle target)
     target_sources(${target} PRIVATE ${notices})
     set_source_files_properties(${notices} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/licenses)
 
+    # RecompLauncher metadata, copied unchanged when the repository has it.
+    if(EXISTS "${PROJECT_SOURCE_DIR}/recomplauncher.json")
+        target_sources(${target} PRIVATE "${PROJECT_SOURCE_DIR}/recomplauncher.json")
+        set_source_files_properties("${PROJECT_SOURCE_DIR}/recomplauncher.json" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    endif()
+
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND xattr -cr "$<TARGET_BUNDLE_DIR:${target}>"
         COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:${target}>"

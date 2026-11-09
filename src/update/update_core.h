@@ -4,7 +4,7 @@
 // extraction (Windows updates).
 //
 // Release files (built by .github/workflows/build.yml; keep these names in sync):
-//   KNID-<version>-macOS.dmg, KNID-<version>-Windows-x64.zip, KNID-<version>-x86_64.AppImage,
+//   KNID-<version>-macOS.dmg, KNID-<version>-Windows-x64.exe, KNID-<version>-x86_64.AppImage,
 //   SHA256SUMS.txt ("<sha256>  <file name>" per line).
 
 #include <cstdint>

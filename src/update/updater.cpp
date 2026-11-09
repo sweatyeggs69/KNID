@@ -118,7 +118,8 @@ Plan make_plan() {
     }
     p.target = exe;
     p.dir = exe.parent_path();
-    p.stage = p.dir / ".knid-update";
+    p.stage = exe;
+    p.stage += ".new";  // the new KNID.exe is downloaded next to the running one (same disk)
     if (!folder_writable(p.dir)) {
         p.reason = "KNID can't write to its folder (" + u8(p.dir) + "), so it can't update itself there.";
         return p;
@@ -191,7 +192,6 @@ struct Updater::Shared {
     // From the last check:
     std::string asset_url, sums_url, asset_digest;
     // Prepared by download():
-    fs::path staged_root;  // Windows: folder holding KNID.exe inside the stage
 
     template <class F> void update(F&& f) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -370,8 +370,8 @@ void Updater::download() {
         fs::path work = work_dir();
         fs::remove_all(work, ec);
         fs::create_directories(work, ec);
-#if !defined(__APPLE__) && !defined(_WIN32)
-        fs::path file = plan.stage;  // download straight next to the AppImage (same disk)
+#if !defined(__APPLE__)
+        fs::path file = plan.stage;  // download straight next to the exe / AppImage (same disk)
 #else
         fs::path file = work / asset_name;
 #endif
@@ -433,25 +433,19 @@ void Updater::download() {
             return;
         }
 #elif defined(_WIN32)
-        fs::remove_all(plan.stage, ec);
-        if (!extract_zip(file, plan.stage, &err)) {
-            fs::remove_all(plan.stage, ec);
-            fs::remove_all(work, ec);
-            s->fail(err);
-            return;
+        // A single self-contained KNID.exe: check it is a Windows executable (MZ / PE header).
+        {
+            char head[2] = {};
+            std::ifstream f(file, std::ios::binary);
+            f.read(head, sizeof head);
+            if (!f || head[0] != 'M' || head[1] != 'Z') {
+                f.close();
+                fs::remove(file, ec);
+                s->fail("The download isn't a Windows program.");
+                return;
+            }
         }
         fs::remove_all(work, ec);
-        fs::path root = plan.stage;
-        if (!fs::exists(root / "KNID.exe", ec)) root = plan.stage / "KNID";
-        if (!fs::exists(root / "KNID.exe", ec)) {
-            fs::remove_all(plan.stage, ec);
-            s->fail("The downloaded zip doesn't contain KNID.exe.");
-            return;
-        }
-        {
-            std::lock_guard<std::mutex> lock(s->mutex);
-            s->staged_root = root;
-        }
 #else
         // AppImage (type 2): an ELF file with "AI\x02" at offset 8.
         {
@@ -486,12 +480,10 @@ bool Updater::install(std::string* error) {
         return false;
     };
     Plan plan;
-    fs::path staged_root;
     {
         std::lock_guard<std::mutex> lock(s_->mutex);
         if (s_->status.state != State::Ready) return fail("The update isn't ready yet.");
         plan = s_->plan;
-        staged_root = s_->staged_root;
     }
     if (busy()) return fail("The update isn't ready yet.");
     std::error_code ec;
@@ -507,46 +499,19 @@ bool Updater::install(std::string* error) {
         return fail("Couldn't put the new version in place: " + ec.message());
     }
 #elif defined(_WIN32)
-    // Move every staged file into place. Files being replaced (including the running KNID.exe,
-    // which Windows allows renaming) become "<name>.old" and are deleted on the next start.
-    std::vector<std::pair<fs::path, fs::path>> moved;  // target, its .old copy ("" if new)
-    std::vector<fs::path> files;
-    for (auto it = fs::recursive_directory_iterator(staged_root, ec); !ec && it != fs::recursive_directory_iterator();
-         it.increment(ec))
-        if (it->is_regular_file()) files.push_back(it->path());
-    if (ec || files.empty()) return fail("The staged update is missing.");
-    auto rollback = [&] {
+    // Windows lets a running program be renamed: KNID.exe becomes KNID.exe.old (deleted on the
+    // next start) and the verified KNID.exe.new takes its place.
+    fs::path old = plan.target;
+    old += ".old";
+    fs::remove(old, ec);
+    fs::rename(plan.target, old, ec);
+    if (ec) return fail("Couldn't move the current version aside: " + ec.message());
+    fs::rename(plan.stage, plan.target, ec);
+    if (ec) {
         std::error_code e;
-        for (auto it = moved.rbegin(); it != moved.rend(); ++it) {
-            fs::remove(it->first, e);
-            if (!it->second.empty()) fs::rename(it->second, it->first, e);
-        }
-    };
-    std::ofstream manifest(plan.dir / ".knid-update-old.txt", std::ios::app);
-    for (const fs::path& src : files) {
-        fs::path rel = fs::relative(src, staged_root, ec);
-        if (ec || rel.empty()) { rollback(); return fail("The staged update is damaged."); }
-        fs::path dst = rel == fs::path("KNID.exe") ? plan.target : plan.dir / rel;
-        fs::path old;
-        if (fs::exists(dst, ec)) {
-            old = dst;
-            old += ".old";
-            fs::remove(old, ec);
-            fs::rename(dst, old, ec);
-            if (ec) { rollback(); return fail("Couldn't replace " + u8(dst.filename()) + ": " + ec.message()); }
-            manifest << u8(old) << '\n';
-        }
-        fs::create_directories(dst.parent_path(), ec);
-        fs::rename(src, dst, ec);
-        if (ec) {
-            if (!old.empty()) { std::error_code e; fs::rename(old, dst, e); }
-            rollback();
-            return fail("Couldn't install " + u8(dst.filename()) + ": " + ec.message());
-        }
-        moved.emplace_back(dst, old);
+        fs::rename(old, plan.target, e);
+        return fail("Couldn't put the new version in place: " + ec.message());
     }
-    manifest.close();
-    fs::remove_all(plan.stage, ec);
 #else
     fs::rename(plan.stage, plan.target, ec);
     if (ec) return fail("Couldn't replace the AppImage: " + ec.message());
@@ -590,9 +555,16 @@ void Updater::cleanup_leftovers() {
         fs::remove_all(bundle.parent_path() / ".KNID-update.app", ec);
     }
 #elif defined(_WIN32)
-    fs::path dir = running_executable().parent_path();
+    fs::path exe = running_executable();
+    fs::path dir = exe.parent_path();
     if (dir.empty()) return;
-    fs::remove_all(dir / ".knid-update", ec);
+    fs::remove_all(dir / ".knid-update", ec);  // older zip-based updates
+    fs::path leftover = exe;
+    leftover += ".new";
+    fs::remove(leftover, ec);
+    leftover = exe;
+    leftover += ".old";
+    fs::remove(leftover, ec);
     fs::path manifest = dir / ".knid-update-old.txt";
     std::ifstream f(manifest);
     if (!f) return;
