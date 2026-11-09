@@ -50,6 +50,7 @@ add_library(knid_gba STATIC
     src/gba/bus.cpp
     src/gba/cpu.cpp
     src/gba/ppu.cpp
+    src/gba/state.cpp
     src/gba/system.cpp
     src/gba/wide_level.cpp
 )
@@ -157,6 +158,13 @@ if(KNID_BUILD_TESTS)
     add_executable(knid_save_test tests/save_import_test.cpp)
     target_link_libraries(knid_save_test PRIVATE knid_saves)
     add_test(NAME save_import COMMAND knid_save_test)
+    add_executable(knid_state_test tests/state_test.cpp)
+    target_link_libraries(knid_state_test PRIVATE knid_gba knid_core)
+    # Uses the user's own ROM when it sits in the source folder (it is never committed).
+    target_compile_definitions(knid_state_test PRIVATE
+        KNID_TEST_ROM="${PROJECT_SOURCE_DIR}/Kirby - Nightmare in Dream Land.gba")
+    add_test(NAME save_state_determinism COMMAND knid_state_test)
+    set_tests_properties(save_state_determinism PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # Analysis tools. Their output is derived from the ROM and goes to generated/ (gitignored).

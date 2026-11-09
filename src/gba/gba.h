@@ -78,6 +78,12 @@ public:
     // Writes SRAM to disk if it changed since the last flush.
     void flush_save();
 
+    // Save states. Call between frames (after run_frame). The data is versioned and carries a
+    // layout fingerprint; load_state() refuses data from an incompatible build. Display-only
+    // state (widescreen margin/output, per-line scratch buffers) is not included.
+    std::vector<u8> save_state() const;
+    bool load_state(const std::vector<u8>& data, std::string* error = nullptr);
+
     u64 frame_count() const { return frame_count_; }
     std::string debug_state() const;
     // Logs unimplemented BIOS calls / unusual events to stderr when true.
