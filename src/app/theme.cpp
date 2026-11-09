@@ -199,7 +199,7 @@ bool big_button(const char* label, ImVec2 size, bool primary) {
 
     // Bounce: lift up a few pixels with an overshoot ease.
     float e = anim * anim * (3 - 2 * anim);
-    float lift = (held ? 0.0f : 4.0f * e) + (hovered && !held ? std::sin(float(ImGui::GetTime()) * 6.0f) * 0.8f : 0.0f);
+    float lift = 0.0f;  // feedback is color and the star only; buttons never move
     ImVec2 a(pos.x, pos.y - lift), b(pos.x + size.x, pos.y + size.y - lift);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float rounding = size.y * 0.5f;

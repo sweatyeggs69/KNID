@@ -431,6 +431,7 @@ bool Store::import_into(int slot, const fs::path& from, std::string* error) {
 
 void set_hotkeys(Hotkeys h) { g_hotkeys = std::move(h); }
 void quick_save() { if (g_hotkeys.quick_save) g_hotkeys.quick_save(); }
+void save_new_slot() { if (g_hotkeys.save_new_slot) g_hotkeys.save_new_slot(); }
 void quick_load() { if (g_hotkeys.quick_load) g_hotkeys.quick_load(); }
 void slot_step(int delta) { if (g_hotkeys.slot_step) g_hotkeys.slot_step(delta); }
 

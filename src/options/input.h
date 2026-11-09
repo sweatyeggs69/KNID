@@ -30,7 +30,7 @@ bool from_string(const std::string& s, Binding& out);
 
 // Emulator shortcuts, stored as input.hotkey.<id> (id from key_name). Each shortcut is a list of
 // chords. A chord is one keyboard key, or one or two controller buttons held together.
-enum class Hotkey { SaveState, LoadState, SlotPrev, SlotNext, Count };
+enum class Hotkey { SaveState, SaveNewSlot, LoadState, SlotPrev, SlotNext, Count };
 inline constexpr int kHotkeyCount = static_cast<int>(Hotkey::Count);
 const char* name(Hotkey h);      // "Save state"
 const char* key_name(Hotkey h);  // "save_state"
