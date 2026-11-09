@@ -56,8 +56,15 @@ if(NOT SDL3_FOUND AND KNID_FETCH_SDL)
 endif()
 
 if(TARGET SDL3::SDL3)
+    # App layer: settings, launcher UI. Uses SDL (pref path, dialogs).
+    add_library(knid_app STATIC
+        src/app/config.cpp
+    )
+    target_include_directories(knid_app PUBLIC src)
+    target_link_libraries(knid_app PUBLIC SDL3::SDL3)
+
     add_executable(knid src/main.cpp)
-    target_link_libraries(knid PRIVATE knid_core knid_gba SDL3::SDL3)
+    target_link_libraries(knid PRIVATE knid_core knid_gba knid_app SDL3::SDL3)
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
 endif()
