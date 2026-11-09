@@ -147,6 +147,9 @@ private:
     void ppu_advance(u32 cycles);
     void ppu_render_line(int y);
     void ppu_render_text_bg(int bg, int y, u16* color, u8* opaque);
+    // Widescreen level reconstruction (wide_level.cpp, specific to this game).
+    void wide_level_detect();
+    u16 wide_level_entry(s32 tx, s32 ty) const;
     void ppu_render_affine_bg(int bg, u16* color, u8* opaque);
     void ppu_render_bitmap(int mode, u16* color, u8* opaque);
     void ppu_render_objects(int y);
@@ -236,6 +239,12 @@ private:
     std::array<u8, kMaxLineWidth> obj_window_{};
     int wide_margin_ = 0;
     std::vector<u16> wide_frame_;  // wide_width() x kScreenHeight when wide_margin_ > 0
+    struct WideLevel {
+        bool valid = false;
+        u32 map = 0;
+        s32 width = 0, height = 0;  // metatiles (16x16 px)
+        s32 cam_x = 0, cam_y = 0;   // multiple of 512/256 to add to BG2 HOFS/VOFS
+    } wide_level_;
     bool frame_done_ = false;
     u64 frame_count_ = 0;
 

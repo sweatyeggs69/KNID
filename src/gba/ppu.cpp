@@ -97,6 +97,17 @@ void Gba::ppu_render_text_bg(int bg, int y, u16* color, u8* opaque) {
         u32 map = screen_base + block * 0x800 + ((sy & 255) >> 3) * 64 + ((sx & 255) >> 3) * 2;
         if (map >= 0x10000) { opaque[x] = 0; continue; }
         u16 e = rd16(&vram_[map]);
+        if (bg == 2 && wide_level_.valid && (x < m || x >= m + kScreenWidth)) {
+            // Outside the original view the VRAM ring holds stale columns: rebuild the
+            // entry from the level layout instead.
+            const s32 ax = s32(xx) + s32(hofs) + wide_level_.cam_x;
+            const s32 ay = s32(yy) + s32(vofs) + wide_level_.cam_y;
+            if (ax < 0 || ay < 0 || ax >= wide_level_.width * 16 || ay >= wide_level_.height * 16) {
+                opaque[x] = 0;
+                continue;
+            }
+            e = wide_level_entry(ax >> 3, ay >> 3);
+        }
         u32 tile = e & 0x3FF, px = sx & 7, py = sy & 7;
         if (e & 0x400) px = 7 - px;
         if (e & 0x800) py = 7 - py;
@@ -246,6 +257,7 @@ void Gba::ppu_render_objects(int y) {
 }
 
 void Gba::ppu_render_line(int y) {
+    if (y == 0) wide_level_detect();
     u16 dispcnt = rd16(&io_[0]);
     const int m = wide_margin_, width = kScreenWidth + 2 * m;
     u16* out = m ? &wide_frame_[std::size_t(y) * std::size_t(width)] : &frame_[y * kScreenWidth];

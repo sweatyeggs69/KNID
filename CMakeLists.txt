@@ -51,6 +51,7 @@ add_library(knid_gba STATIC
     src/gba/cpu.cpp
     src/gba/ppu.cpp
     src/gba/system.cpp
+    src/gba/wide_level.cpp
 )
 target_include_directories(knid_gba PUBLIC src)
 if(MSVC)

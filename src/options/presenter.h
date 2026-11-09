@@ -40,6 +40,9 @@ public:
     // Saves the next presented window image (physical pixels) as a BMP, for headless checks.
     void capture_next(std::string bmp_path) { capture_path_ = std::move(bmp_path); }
 
+    // Forget frame-blending history (call after loading a save state or any jump in time).
+    void reset_history() { blender_.reset(); }
+
     // Re-read settings (after the options screen changed them).
     void reload();
 
