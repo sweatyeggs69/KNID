@@ -34,6 +34,16 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 | Windows 10 or 11 (64-bit) | `KNID-<version>-Windows-x64.zip` | Unzip anywhere and run `KNID.exe`. If SmartScreen appears, choose **More info**, then **Run anyway**. |
 | Linux (x86_64) | `KNID-<version>-x86_64.AppImage` | Run `chmod +x KNID-*.AppImage`, then start it. |
 
+### Verify your download
+
+Every release lists a **VirusTotal** scan link for each download and a `SHA256SUMS.txt` file with
+SHA-256 checksums. See the notes of the [latest release](https://github.com/sweatyeggs69/KNID/releases/latest).
+
+[![Scanned on VirusTotal](https://img.shields.io/badge/VirusTotal-scan%20links%20in%20release%20notes-394eff)](https://github.com/sweatyeggs69/KNID/releases/latest)
+
+To check a checksum: `shasum -a 256 <file>` (macOS), `certutil -hashfile <file> SHA256` (Windows)
+or `sha256sum <file>` (Linux), and compare it with the line in `SHA256SUMS.txt`.
+
 ## Getting started
 
 1. **Download** KNID for your system and open it.
@@ -186,6 +196,13 @@ Useful command-line options: `knid --help`. For example `--play` starts the game
 Bug reports and pull requests are welcome. Please keep game content out of the repository:
 no ROMs, BIOS files, saves, save states, extracted assets or screenshots of the game. Only
 original artwork (like the procedural icon in `docs/`) belongs here.
+
+### For maintainers
+
+Releases are built by GitHub Actions when a tag like `v0.1.0` is pushed. To get VirusTotal links
+in the release notes, add a repository secret named `VT_API_KEY` (a free VirusTotal account works:
+Profile > API key) under **Settings > Secrets and variables > Actions**. Without it, releases are
+still published, just without the scan links.
 
 ## License
 
