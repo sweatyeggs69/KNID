@@ -15,8 +15,17 @@ namespace knid::credentials {
 namespace fs = std::filesystem;
 
 #if defined(__APPLE__)
+// KNID builds are ad-hoc signed, so every build has a different code signature. A Keychain item
+// whose access list names "the app that created it" therefore makes macOS ask for the login
+// password after each update. The item is created with an access list that lets the user's own
+// programs read it without a prompt (it stays encrypted in the login Keychain, which locks with the
+// Mac), and reads never show UI: if the Keychain would prompt anyway, KNID asks to sign in again.
+// Items from older builds (service "KNID RetroAchievements") used the per-build list and are left
+// alone, since touching them would prompt.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"  // SecAccess/SecACL: no replacement for the file Keychain
 namespace {
-constexpr const char* kService = "KNID RetroAchievements";
+constexpr const char* kService = "KNID RetroAchievements token";
 
 struct CF {
     CFTypeRef ref = nullptr;
@@ -41,6 +50,29 @@ CFMutableDictionaryRef query_for(const std::string& user, CF& service, CF& accou
     CFDictionarySetValue(q, kSecAttrAccount, account.ref);
     return q;
 }
+
+// Access for the new item: reading (decrypt) is allowed for any of the user's programs, without a
+// prompt. Changing the access list itself stays restricted.
+SecAccessRef open_read_access() {
+    SecAccessRef access = nullptr;
+    if (SecAccessCreate(CFSTR("KNID RetroAchievements"), nullptr, &access) != errSecSuccess || !access) return nullptr;
+    CFArrayRef acls = SecAccessCopyMatchingACLList(access, kSecACLAuthorizationDecrypt);
+    if (acls) {
+        for (CFIndex i = 0; i < CFArrayGetCount(acls); ++i) {
+            auto acl = (SecACLRef)CFArrayGetValueAtIndex(acls, i);
+            CFArrayRef apps = nullptr;
+            CFStringRef desc = nullptr;
+            SecKeychainPromptSelector prompt = 0;
+            if (SecACLCopyContents(acl, &apps, &desc, &prompt) == errSecSuccess) {
+                SecACLSetContents(acl, nullptr /* any application */, desc ? desc : CFSTR("KNID RetroAchievements"), 0);
+                if (apps) CFRelease(apps);
+                if (desc) CFRelease(desc);
+            }
+        }
+        CFRelease(acls);
+    }
+    return access;
+}
 }  // namespace
 
 bool store(const fs::path&, const std::string& user, const std::string& secret) {
@@ -49,6 +81,9 @@ bool store(const fs::path&, const std::string& user, const std::string& secret) 
     SecItemDelete(static_cast<CFDictionaryRef>(query.ref));
     CF data(CFDataCreate(nullptr, reinterpret_cast<const UInt8*>(secret.data()), CFIndex(secret.size())));
     CFDictionarySetValue((CFMutableDictionaryRef)query.ref, kSecValueData, data.ref);
+    CF access(open_read_access());
+    if (access.ref) CFDictionarySetValue((CFMutableDictionaryRef)query.ref, kSecAttrAccess, access.ref);
+    CFDictionarySetValue((CFMutableDictionaryRef)query.ref, kSecAttrLabel, CFSTR("KNID RetroAchievements sign-in"));
     return SecItemAdd(static_cast<CFDictionaryRef>(query.ref), nullptr) == errSecSuccess;
 }
 
@@ -57,6 +92,8 @@ std::optional<std::string> load(const fs::path&, const std::string& user) {
     CF query(query_for(user, service, account));
     CFDictionarySetValue((CFMutableDictionaryRef)query.ref, kSecReturnData, kCFBooleanTrue);
     CFDictionarySetValue((CFMutableDictionaryRef)query.ref, kSecMatchLimit, kSecMatchLimitOne);
+    // Never show a Keychain password dialog: fail instead, and the app asks to sign in again.
+    CFDictionarySetValue((CFMutableDictionaryRef)query.ref, kSecUseAuthenticationUI, kSecUseAuthenticationUIFail);
     CFTypeRef out = nullptr;
     if (SecItemCopyMatching(static_cast<CFDictionaryRef>(query.ref), &out) != errSecSuccess || !out)
         return std::nullopt;
@@ -70,6 +107,7 @@ void erase(const fs::path&, const std::string& user) {
     CF query(query_for(user, service, account));
     SecItemDelete(static_cast<CFDictionaryRef>(query.ref));
 }
+#pragma clang diagnostic pop
 
 const char* location() { return "your macOS Keychain"; }
 
