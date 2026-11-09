@@ -23,9 +23,9 @@ function(knid_configure_bundle target)
     set_source_files_properties("${icon}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
     # License and third-party notices.
-    set(lic "${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-OFL.txt" "${PROJECT_SOURCE_DIR}/assets/fonts/PixelifySans-OFL.txt")
-    target_sources(${target} PRIVATE ${lic})
-    set_source_files_properties(${lic} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/licenses)
+    set(lic "${PROJECT_SOURCE_DIR}/assets/fonts/OFL.txt")
+    target_sources(${target} PRIVATE "${lic}")
+    set_source_files_properties("${lic}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources/licenses/Fredoka)
     set(notices "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md")
     target_sources(${target} PRIVATE ${notices})
     set_source_files_properties(${notices} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/licenses)
