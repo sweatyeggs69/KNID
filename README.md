@@ -2,7 +2,9 @@
   <img src="docs/knid-icon.png" width="128" height="128" alt="KNID icon: a yellow star on a night sky">
 </p>
 
-<h1 align="center">KNID</h1>
+<h1 align="center">
+  <img src="docs/knid-logo.png" width="360" alt="KNID">
+</h1>
 
 <p align="center">
   Play <b>Kirby: Nightmare in Dream Land</b> natively on macOS, Windows and Linux.
