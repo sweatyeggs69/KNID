@@ -59,6 +59,8 @@ KNID works with [RecompLauncher](https://recomplauncher.com), which installs and
 these releases. Pick your ROM there and it is checked against the verified USA dump, set as KNID's
 game, and started with Play. The display settings show on the game's page too.
 
+[![Verified developer on RecompStore](https://recompstore.com/assets/press/verified-dark.svg)](https://recompstore.com/dev/sweatyeggs69)
+
 ## Controls
 
 Defaults; change them in Settings > Controls.
