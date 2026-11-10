@@ -440,7 +440,7 @@ void App::update_emulation() {
         game_->set_wide_margin(display::wide_margin(presenter_->settings().aspect));
         while (script_pos_ < script_.size() && script_[script_pos_].first <= game_frames_)
             script_keys_ = script_[script_pos_++].second;
-        game_->set_keys(std::uint16_t(controls_->poll() | script_keys_));
+        game_->set_keys(std::uint16_t(controls_->poll_frame() | script_keys_));
         game_->run_frame();
         if (achievements_) achievements_->frame(*game_);
         ++game_frames_;

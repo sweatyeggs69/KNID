@@ -318,7 +318,7 @@ ShortcutResult create_shortcut(ShortcutPlace place, bool replace_foreign) {
     {
         std::ofstream d(target, std::ios::trunc);
         d << "[Desktop Entry]\nType=Application\nName=" << kShortcutName << "\nExec=\"" << launch.string()
-          << "\" --play\nIcon=knid\nTerminal=false\nCategories=Game;\nX-KNID-Shortcut=true\n";
+          << "\" --play\nIcon=knid\nStartupWMClass=KNID\nTerminal=false\nCategories=Game;\nX-KNID-Shortcut=true\n";
         if (!d) {
             r.message = "Could not write " + target.string();
             return r;

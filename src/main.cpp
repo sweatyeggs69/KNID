@@ -246,6 +246,13 @@ int main(int argc, char** argv) {
         return r.ok ? 0 : 1;
     }
 
+    // App name for the macOS app menu (About/Hide/Quit KNID), audio mixers, and on Linux the
+    // window class / Wayland app id, so taskbars say "KNID" instead of the executable name.
+    SDL_SetAppMetadata("KNID", nullptr, nullptr);
+#if !defined(_WIN32) && !defined(__APPLE__)
+    SDL_SetHint(SDL_HINT_APP_ID, "KNID");
+#endif
+
     SDL_InitFlags flags = gui ? (SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD) : 0;
     if (!SDL_Init(flags)) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());

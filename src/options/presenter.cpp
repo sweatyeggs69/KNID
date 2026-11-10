@@ -52,6 +52,10 @@ void Presenter::draw(const std::uint16_t* frame, int width, const std::string& p
 
 void Presenter::redraw(const std::string& prompt) {
     if (!screen_) return;
+    // The layout below is in physical pixels. The UI frame before this one may have left the
+    // render scale at the display density (ImGui draws at 2x on Retina), which would draw the
+    // game doubled and partly off screen, so always reset it here.
+    SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     int out_w = 0, out_h = 0;
     SDL_GetCurrentRenderOutputSize(renderer_, &out_w, &out_h);
     const Layout layout = compute_layout(out_w, out_h, settings_.scale, screen_w_, kHeight);

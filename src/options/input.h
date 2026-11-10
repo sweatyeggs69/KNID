@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "options/settings_io.h"
+#include "options/turbo.h"
 
 namespace knid::input {
 
@@ -27,6 +28,8 @@ struct Binding {
 // "key:X", "pad:a", "axis:leftx-", "axis:righttrigger+"
 std::string to_string(const Binding& b);
 bool from_string(const std::string& s, Binding& out);
+// Friendly name for menus and messages: "Up Arrow", "Left D-Pad", "A Button", "Left Stick Up".
+std::string display_name(const Binding& b);
 
 // Emulator shortcuts, stored as input.hotkey.<id> (id from key_name). Each shortcut is a list of
 // chords. A chord is one keyboard key, or one or two controller buttons held together.
@@ -46,15 +49,20 @@ struct Config {
     std::array<std::vector<Binding>, kButtonCount> buttons;
     std::array<std::vector<Chord>, kHotkeyCount> hotkeys;
     int deadzone_percent = 40;  // stick and trigger threshold
+    TurboSettings turbo;
 };
 
 Config default_config();
 // Stored as input.deadzone and input.<Button> = "key:X | pad:a | axis:leftx+" ("none" = unbound).
+// Turbo: input.turbo = true/false, input.turbo.rate = 1..5 presses per second,
+// input.turbo.buttons = "A, B" (any GBA button names, or "none").
 // Missing or unreadable entries keep their defaults.
 Config load(const SettingsIO& io);
 void store(const Config& c, const SettingsIO& io);
 std::string join(const std::vector<Binding>& list);
 std::vector<Binding> split(const std::string& text);
+std::string turbo_buttons_to_string(std::uint16_t buttons);
+std::uint16_t turbo_buttons_from_string(const std::string& text);
 
 // Owns the open gamepads, the bindings and the remap state machine.
 class Manager {
@@ -69,6 +77,8 @@ public:
 
     // Current GBA KEYINPUT-style mask (1 = pressed). Empty while remapping.
     std::uint16_t poll() const;
+    // poll() with turbo applied. Call once per emulated frame; turbo timing counts these calls.
+    std::uint16_t poll_frame();
 
     // Remapping walks through every button in turn. The first key, pad button or stick
     // direction pressed replaces that button's bindings for that device type.
@@ -90,8 +100,8 @@ public:
 
     void reset_to_defaults();
     const Config& config() const { return config_; }
-    std::string describe(Button b) const;  // "X, pad a" style summary for messages
-    std::string describe(Hotkey h) const;  // "F5, pad back + rightshoulder"
+    std::string describe(Button b) const;  // "X, A Button" style summary for menus and messages
+    std::string describe(Hotkey h) const;  // "F5, Back Button + Right Bumper"
     std::string take_message();           // one-shot status text for the on-screen display
     int gamepad_count() const { return int(pads_.size()); }
 
@@ -114,6 +124,7 @@ private:
     Chord capture_;  // controller buttons held while rebinding a shortcut
     // Controller buttons that just fired a shortcut; kept away from the game until released.
     mutable std::vector<int> suppressed_;
+    TurboState turbo_;
 };
 
 }  // namespace knid::input
