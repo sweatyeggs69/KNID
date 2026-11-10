@@ -5,7 +5,7 @@
 <h1 align="center">KNID</h1>
 
 <p align="center">
-  Play your own copy of <b>Kirby: Nightmare in Dream Land</b> natively on macOS, Windows and Linux.
+  Play <b>Kirby: Nightmare in Dream Land</b> natively on macOS, Windows and Linux.
 </p>
 
 <p align="center">
@@ -30,11 +30,6 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 | macOS 11 or newer (Apple Silicon and Intel) | `KNID-<version>-macOS.dmg` | Drag KNID into Applications. Right-click KNID and choose **Open**, then **Open** again. |
 | Windows 10 or 11 (64-bit) | `KNID-<version>-Windows-x64.exe` | One self-contained file: put it in a folder you like and run it. If SmartScreen appears, choose **More info**, then **Run anyway**. |
 | Linux (x86_64) | `KNID-<version>-Linux-x64.AppImage` | Run `chmod +x KNID-*.AppImage`, then start it. |
-
-### Verify your download
-
-Every release includes a `SHA256SUMS.txt` file with the SHA-256 checksum of each download. See the
-[latest release](https://github.com/sweatyeggs69/KNID/releases/latest).
 
 ## Getting started
 
