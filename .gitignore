@@ -27,8 +27,8 @@ Screenshot*
 # Milestone screenshots (may show ROM-derived art)
 screenshots/
 
-# Original artwork that may be committed (procedural icon only; never game images)
-!docs/knid-icon.png
+# Original artwork that may be committed (the procedural icon and the logo; never game images)
+!assets/icon/knid-icon.png
 !docs/knid-logo.png
 !assets/logo/knid-logo.png
 

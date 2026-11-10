@@ -1,8 +1,10 @@
-<h1 align="center">
-  <img src="docs/knid-icon.png" width="128" height="128" align="middle" alt="KNID icon: a yellow star on a night sky">
-  &nbsp;
-  <img src="docs/knid-logo.png" height="118" align="middle" alt="KNID">
-</h1>
+<p align="center">
+  <img src="assets/icon/knid-icon.png" alt="KNID app icon" width="128">
+</p>
+
+<p align="center">
+  <img src="docs/knid-logo.png" alt="KNID" width="520">
+</p>
 
 <p align="center">
   Play <b>Kirby: Nightmare in Dream Land</b> natively on macOS, Windows and Linux.
@@ -77,6 +79,9 @@ Defaults; change them in Settings > Controls.
 | Save to new slot | F9 | |
 | Previous / next slot | F6 / F7 | Back + D-pad left / right |
 | Fullscreen | F11 | |
+
+Quick save and quick load use the Auto slot until you pick another slot (F6 / F7, or click a slot in
+the States tab). Closing the game also saves to the Auto slot.
 
 ## FAQ
 
