@@ -24,8 +24,8 @@
 #include "app/toast.h"
 #include "gba/gba.h"
 
+// The one stb_image implementation in the app (also used by app.cpp for the launcher logo).
 #define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC
 #define STBI_ONLY_PNG
 #define STBI_NO_STDIO
 #if defined(__GNUC__)
