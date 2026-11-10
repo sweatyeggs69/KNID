@@ -5,6 +5,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cmath>
 #include <deque>
 #include <vector>
 
@@ -137,12 +138,22 @@ void draw() {
         // Always above other windows (e.g. the F1 menu) without taking focus or input.
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         ImDrawList* dl = ImGui::GetWindowDrawList();
+        float thumb_h = 0.0f;
         if (t.tex) {
             float hgt = 80.0f, wdt = hgt * float(t.w) / float(t.h);
             if (wdt > 140.0f) { wdt = 140.0f; hgt = wdt * float(t.h) / float(t.w); }
             ImGui::Image((ImTextureID)(intptr_t)t.tex, ImVec2(wdt, hgt));
             ImGui::SameLine();
+            thumb_h = hgt;
         }
+        // Center the text block vertically beside the thumbnail.
+        float text_h = ImGui::CalcTextSize(t.title.c_str(), nullptr, false, 300.0f).y;
+        if (!t.body.empty()) {
+            ImGui::PushFont(theme::font_small());
+            text_h += ImGui::GetStyle().ItemSpacing.y + ImGui::CalcTextSize(t.body.c_str(), nullptr, false, 320.0f).y;
+            ImGui::PopFont();
+        }
+        if (thumb_h > text_h) ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::floor((thumb_h - text_h) * 0.5f));
         ImGui::BeginGroup();
         ImVec2 p = ImGui::GetCursorScreenPos();
         theme::draw_star(dl, ImVec2(p.x + 8, p.y + 11), t.style == Style::Achievement ? 9.0f : 7.0f,
