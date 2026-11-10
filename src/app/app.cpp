@@ -238,7 +238,7 @@ bool App::init_window() {
     });
     register_options_tab("Achievements", [this](Config&) { achievements_->draw_tab(); });
     // Shortcuts use the Auto slot until the player picks a numbered one. (states.slot, used before
-    // 1.0.4, always pointed at a numbered slot, so it is left behind.)
+    // 1.1.0, always pointed at a numbered slot, so it is left behind.)
     slot_ = std::clamp(config_.get_int("states.current_slot", states::kAutoSlot), states::kAutoSlot, states::kSlots);
     states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) quick_save(); },
                          [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
