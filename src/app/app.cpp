@@ -921,10 +921,9 @@ void App::draw_states_tab() {
         } else {
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddRectFilled(tp, ImVec2(tp.x + thumb_w, tp.y + thumb_h), theme::u32(c.night), 10);
-            theme::draw_star(dl, ImVec2(tp.x + thumb_w / 2, tp.y + thumb_h / 2 - 8), 16, theme::u32(c.text_dim, 0.4f));
             const char* empty = i.exists ? "Unusable" : "Empty";
             ImVec2 ts = ImGui::CalcTextSize(empty);
-            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + thumb_h / 2 + 14), theme::u32(c.text_dim), empty);
+            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + (thumb_h - ts.y) / 2), theme::u32(c.text_dim), empty);
             ImGui::Dummy(ImVec2(thumb_w, thumb_h));
         }
         if (ImGui::IsItemClicked()) {
@@ -1323,13 +1322,13 @@ void App::draw_ui() {
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         bool have_frame = attract_ || (game_ && game_paused_);
         if (have_frame) {
-            // Soft night tint over the game backdrop, plus a few stars.
+            // Soft night tint over the game backdrop.
             bg->AddRectFilledMultiColor(ImVec2(0, 0), ds, theme::u32(theme::palette().night, 0.35f),
                                         theme::u32(theme::palette().night, 0.35f),
                                         theme::u32(theme::palette().night, 0.75f),
                                         theme::u32(theme::palette().night, 0.75f));
         } else {
-            theme::draw_starfield(bg, ImVec2(0, 0), ds, ImGui::GetTime());
+            theme::draw_backdrop(bg, ImVec2(0, 0), ds);
         }
     }
     switch (screen_) {

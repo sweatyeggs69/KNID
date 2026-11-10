@@ -37,16 +37,6 @@ void release(Toast& t) {
     t.tex = nullptr;
 }
 
-ImVec4 accent(Style s) {
-    const auto& c = theme::palette();
-    switch (s) {
-        case Style::Success: return c.good;
-        case Style::Warning: return c.bad;
-        case Style::Achievement: return c.yellow;
-        default: return c.pink;
-    }
-}
-
 }  // namespace
 
 void show(const std::string& title, const std::string& body, const std::uint8_t* rgba, int width, int height,
@@ -137,7 +127,6 @@ void draw() {
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
         // Always above other windows (e.g. the F1 menu) without taking focus or input.
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-        ImDrawList* dl = ImGui::GetWindowDrawList();
         float thumb_h = 0.0f;
         if (t.tex) {
             float hgt = 80.0f, wdt = hgt * float(t.w) / float(t.h);
@@ -155,10 +144,6 @@ void draw() {
         }
         if (thumb_h > text_h) ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::floor((thumb_h - text_h) * 0.5f));
         ImGui::BeginGroup();
-        ImVec2 p = ImGui::GetCursorScreenPos();
-        theme::draw_star(dl, ImVec2(p.x + 8, p.y + 11), t.style == Style::Achievement ? 9.0f : 7.0f,
-                         theme::u32(accent(t.style), alpha));
-        ImGui::SetCursorScreenPos(ImVec2(p.x + 22, p.y));
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 300.0f);
         ImGui::TextUnformatted(t.title.c_str());
         ImGui::PopTextWrapPos();

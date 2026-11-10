@@ -1,5 +1,5 @@
 #pragma once
-// KNID launcher theme: dreamy night sky, soft pink and warm star yellow. Original artwork only:
+// KNID launcher theme: dreamy night sky, soft pink and warm yellow. Original artwork only:
 // everything is drawn procedurally; the font is Fredoka (SIL OFL 1.1, see assets/fonts/OFL.txt).
 
 #include <imgui.h>
@@ -15,7 +15,7 @@ struct Palette {
     ImVec4 pink_hover;
     ImVec4 pink_active;
     ImVec4 pink_soft;    // headers, selection
-    ImVec4 yellow;       // stars, highlights, focus
+    ImVec4 yellow;       // highlights, focus
     ImVec4 text;         // warm white
     ImVec4 text_dim;
     ImVec4 text_on_pink;  // dark text for pink buttons
@@ -36,12 +36,9 @@ ImFont* font_title();  // ~44 px
 ImFont* font_small();  // ~16 px
 ImFont* font_button(); // ~23 px semibold
 
-// Animated starfield + soft gradient filling [min, max]. t = seconds.
-void draw_starfield(ImDrawList* dl, ImVec2 min, ImVec2 max, double t);
-// Five-point star.
-void draw_star(ImDrawList* dl, ImVec2 center, float radius, ImU32 color, float rotation = 0.0f,
-               bool filled = true);
-// Large rounded button with a gentle hover bounce and a small star on hover.
+// Soft night gradient with a pink haze, filling [min, max].
+void draw_backdrop(ImDrawList* dl, ImVec2 min, ImVec2 max);
+// Large rounded button that lights up and gains an outline on hover.
 // primary = pink, otherwise night-light.
 bool big_button(const char* label, ImVec2 size, bool primary = true);
 // Text centered horizontally in the current window.
