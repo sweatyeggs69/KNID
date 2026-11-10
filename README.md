@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/knid-logo.png" alt="KNID" width="520">
+  <img src="docs/knid-logo.png" alt="KNID" width="400">
 </p>
 
 <p align="center">
