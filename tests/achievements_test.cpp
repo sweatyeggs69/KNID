@@ -33,7 +33,7 @@ static std::vector<std::uint32_t> g_unlocked;
 static bool g_blank = false;  // reads return zeros (an achievement must be false before it can trigger)
 
 static std::uint32_t RC_CCONV read_memory(std::uint32_t address, std::uint8_t* buffer, std::uint32_t n, rc_client_t*) {
-    std::uint32_t got = knid::ra_read_memory(*g_gba, address, buffer, n);
+    std::uint32_t got = knid::ra_read_memory(g_gba, address, buffer, n);
     if (g_blank) std::memset(buffer, 0, got);
     return got;
 }
@@ -101,11 +101,15 @@ int main() {
     g_gba = &gba;
 
     std::uint8_t b[4] = {};
-    CHECK(knid::ra_read_memory(gba, 0x48000, b, 2) == 2 && b[0] == 0xAB && b[1] == 0xCD);
-    CHECK(knid::ra_read_memory(gba, 0x50000, b, 1) == 1 && b[0] == 0);  // past this game's 32 KiB SRAM
-    CHECK(knid::ra_read_memory(gba, 0x57FFF, b, 4) == 1);              // end of the map
-    CHECK(knid::ra_read_memory(gba, 0x58000, b, 1) == 0);
-    CHECK(knid::ra_read_memory(gba, 0x7FFE, b, 4) == 4);                // IWRAM into EWRAM
+    CHECK(knid::ra_read_memory(&gba, 0x48000, b, 2) == 2 && b[0] == 0xAB && b[1] == 0xCD);
+    CHECK(knid::ra_read_memory(&gba, 0x50000, b, 1) == 1 && b[0] == 0);  // past this game's 32 KiB SRAM
+    CHECK(knid::ra_read_memory(&gba, 0x57FFF, b, 4) == 1);              // end of the map
+    CHECK(knid::ra_read_memory(&gba, 0x58000, b, 1) == 0);
+    CHECK(knid::ra_read_memory(&gba, 0x7FFE, b, 4) == 4);                // IWRAM into EWRAM
+    // No machine attached: addresses in the map read as 0, past it as nothing.
+    CHECK(knid::ra_read_memory(nullptr, 0x40, b, 4) == 4 && b[0] == 0 && b[3] == 0);
+    CHECK(knid::ra_read_memory(nullptr, 0x57FFF, b, 4) == 1);
+    CHECK(knid::ra_read_memory(nullptr, 0x58000, b, 1) == 0);
     CHECK(gba.iwram().size() == 0x8000 && gba.ewram().size() == 0x40000);
 
     // Full session against canned replies.
@@ -113,10 +117,22 @@ int main() {
     rc_client_set_event_handler(client, &on_event);
     rc_client_begin_login_with_password(client, "Kirby", "secret", &expect_ok, nullptr);
     CHECK(rc_client_get_user_info(client) != nullptr);
+    // The app loads the game between frames, when no machine is attached to the reader: the
+    // achievements must still come up active, not Unsupported.
+    g_gba = nullptr;
     rc_client_begin_load_game(client, "35ae64b0f27e60107c14ab956f6cdf70", &expect_ok, nullptr);
     CHECK(rc_client_is_game_loaded(client));
     const rc_client_game_t* game = rc_client_get_game_info(client);
     CHECK(game && game->console_id == RC_CONSOLE_GAMEBOY_ADVANCE && game->id == 770);
+    {
+        rc_client_achievement_list_t* list =
+            rc_client_create_achievement_list(client, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE, RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+        CHECK(list != nullptr);
+        for (std::uint32_t i = 0; list && i < list->num_buckets; ++i)
+            CHECK(list->buckets[i].bucket_type != RC_CLIENT_ACHIEVEMENT_BUCKET_UNSUPPORTED);
+        rc_client_destroy_achievement_list(list);
+    }
+    g_gba = &gba;
     g_blank = true;
     for (int i = 0; i < 3; ++i) rc_client_do_frame(client);
     CHECK(g_unlocked.empty());

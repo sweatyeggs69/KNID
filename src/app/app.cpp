@@ -1476,7 +1476,7 @@ int App::run() {
             if (opt_.frames >= 0 && frames_ >= opt_.frames) { reached_end = true; break; }
         }
         update_audio_rate();
-        if (achievements_) achievements_->idle();  // network replies, pings, toasts
+        if (achievements_) achievements_->idle(game_.get());  // network replies, pings, toasts
 
         bool menu = options_menu_open();
         if (menu_was_open_ && !menu) {  // apply what changed in the settings menu
