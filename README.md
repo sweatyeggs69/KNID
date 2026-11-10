@@ -72,7 +72,7 @@ Defaults; change them in Settings > Controls.
 | L / R | A / S | Shoulders or triggers |
 | Start / Select | Enter / Backspace | Start / Back |
 | Settings menu | F1 or Esc | |
-| Quick save / load | F5 / F8 | Back + R / Back + L |
+| Quick save / load | Page Up / Page Down (Fn + Up / Down on a Mac laptop) | Back + R / Back + L |
 | Save to new slot | F9 | |
 | Previous / next slot | F6 / F7 | Back + D-pad left / right |
 | Fullscreen | F11 | |

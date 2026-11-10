@@ -98,7 +98,7 @@ inline int next_free_slot(const std::vector<bool>& used, int current) {
 // into the next empty slot and make that the current one.
 enum class QuickSave { Overwrite, NewSlot };
 
-// Hotkey actions (F5 quick save, F9 save to new slot, F8 quick load, F6/F7 previous/next slot by
+// Hotkey actions (Page Up quick save, F9 save to new slot, Page Down quick load, F6/F7 previous/next slot by
 // default). The app registers the handlers; input code (rebindable hotkeys) calls these.
 struct Hotkeys {
     std::function<void()> quick_save, quick_load;

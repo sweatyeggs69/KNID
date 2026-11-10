@@ -82,6 +82,8 @@ std::string display_name(const Binding& b) {
                 case SDL_SCANCODE_RETURN: return "Enter";
                 case SDL_SCANCODE_KP_ENTER: return "Keypad Enter";
                 case SDL_SCANCODE_SPACE: return "Space";
+                case SDL_SCANCODE_PAGEUP: return "Page Up";
+                case SDL_SCANCODE_PAGEDOWN: return "Page Down";
 #ifdef __APPLE__
                 case SDL_SCANCODE_LGUI: return "Left Command";
                 case SDL_SCANCODE_RGUI: return "Right Command";
@@ -277,12 +279,12 @@ Config default_config() {
     at(Button::Down) = {key(SDL_SCANCODE_DOWN), pad(SDL_GAMEPAD_BUTTON_DPAD_DOWN), axis(SDL_GAMEPAD_AXIS_LEFTY, 1)};
     at(Button::R) = {key(SDL_SCANCODE_S), pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 1)};
     at(Button::L) = {key(SDL_SCANCODE_A), pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 1)};
-    // Shortcuts: F-keys, and Back (Select) held with a shoulder or D-pad side on a controller.
+    // Shortcuts: Page Up / Page Down to save / load, F-keys for the rest, and Back (Select) held with a shoulder or D-pad side on a controller.
     auto hk = [&](Hotkey h) -> std::vector<Chord>& { return c.hotkeys[int(h)]; };
     const Binding back = pad(SDL_GAMEPAD_BUTTON_BACK);
-    hk(Hotkey::SaveState) = {{key(SDL_SCANCODE_F5)}, {back, pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)}};
+    hk(Hotkey::SaveState) = {{key(SDL_SCANCODE_PAGEUP)}, {back, pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)}};
     hk(Hotkey::SaveNewSlot) = {{key(SDL_SCANCODE_F9)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_UP)}};
-    hk(Hotkey::LoadState) = {{key(SDL_SCANCODE_F8)}, {back, pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)}};
+    hk(Hotkey::LoadState) = {{key(SDL_SCANCODE_PAGEDOWN)}, {back, pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)}};
     hk(Hotkey::SlotPrev) = {{key(SDL_SCANCODE_F6)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_LEFT)}};
     hk(Hotkey::SlotNext) = {{key(SDL_SCANCODE_F7)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)}};
     return c;
@@ -338,6 +340,23 @@ std::uint16_t turbo_buttons_from_string(const std::string& text) {
     return out;
 }
 
+namespace {
+// Shortcut defaults from 1.0.3 and earlier. A settings.ini still holding exactly these was never
+// customised, so it moves to the current defaults instead of keeping the old keys forever.
+std::string legacy_default(Hotkey h) {
+    const Binding back = pad(SDL_GAMEPAD_BUTTON_BACK);
+    switch (h) {
+        case Hotkey::SaveState: return join_chords({{key(SDL_SCANCODE_F5)}, {back, pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)}});
+        case Hotkey::LoadState: return join_chords({{key(SDL_SCANCODE_F8)}, {back, pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)}});
+        default: return {};
+    }
+}
+bool is_legacy_default(Hotkey h, const std::string& value) {
+    const std::string old = legacy_default(h);
+    return !old.empty() && !value.empty() && join_chords(split_chords(value)) == old;
+}
+}  // namespace
+
 Config load(const SettingsIO& io) {
     Config c = default_config();
     if (!io.get) return c;
@@ -360,7 +379,7 @@ Config load(const SettingsIO& io) {
     }
     for (int i = 0; i < kHotkeyCount; ++i) {
         const std::string v = trim(io.get(std::string("input.hotkey.") + key_name(Hotkey(i)), ""));
-        if (v.empty()) continue;
+        if (v.empty() || is_legacy_default(Hotkey(i), v)) continue;  // keep default
         if (lower(v) == "none") c.hotkeys[i].clear();
         else if (auto list = split_chords(v); !list.empty()) c.hotkeys[i] = std::move(list);
     }
@@ -391,8 +410,10 @@ Manager::Manager(SettingsIO io) : io_(std::move(io)) {
                         io_.get("input.turbo.buttons", missing) != missing;
         for (int i = 0; complete && i < kButtonCount; ++i)
             complete = io_.get(std::string("input.") + name(Button(i)), missing) != missing;
-        for (int i = 0; complete && i < kHotkeyCount; ++i)
-            complete = io_.get(std::string("input.hotkey.") + key_name(Hotkey(i)), missing) != missing;
+        for (int i = 0; complete && i < kHotkeyCount; ++i) {
+            const std::string v = io_.get(std::string("input.hotkey.") + key_name(Hotkey(i)), missing);
+            complete = v != missing && !is_legacy_default(Hotkey(i), trim(v));  // rewrite moved defaults
+        }
         if (!complete) save();
     }
     // Pads connected before this object existed already sent their ADDED events.

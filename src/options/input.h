@@ -39,7 +39,7 @@ const char* name(Hotkey h);      // "Save state"
 const char* key_name(Hotkey h);  // "save_state"
 
 using Chord = std::vector<Binding>;
-// "key:F5", "pad:back+pad:rightshoulder"
+// "key:PageUp", "pad:back+pad:rightshoulder"
 std::string to_string(const Chord& c);
 bool chord_from_string(const std::string& s, Chord& out);
 std::string join_chords(const std::vector<Chord>& list);
@@ -101,7 +101,7 @@ public:
     void reset_to_defaults();
     const Config& config() const { return config_; }
     std::string describe(Button b) const;  // "X, A Button" style summary for menus and messages
-    std::string describe(Hotkey h) const;  // "F5, Back Button + Right Bumper"
+    std::string describe(Hotkey h) const;  // "Page Up, Back Button + Right Bumper"
     std::string take_message();           // one-shot status text for the on-screen display
     int gamepad_count() const { return int(pads_.size()); }
 
