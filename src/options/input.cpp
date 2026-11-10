@@ -71,6 +71,72 @@ std::string to_string(const Binding& b) {
     return "?";
 }
 
+std::string display_name(const Binding& b) {
+    switch (b.kind) {
+        case Binding::Kind::Key: {
+            switch (SDL_Scancode(b.code)) {
+                case SDL_SCANCODE_UP: return "Up Arrow";
+                case SDL_SCANCODE_DOWN: return "Down Arrow";
+                case SDL_SCANCODE_LEFT: return "Left Arrow";
+                case SDL_SCANCODE_RIGHT: return "Right Arrow";
+                case SDL_SCANCODE_RETURN: return "Enter";
+                case SDL_SCANCODE_KP_ENTER: return "Keypad Enter";
+                case SDL_SCANCODE_SPACE: return "Space";
+#ifdef __APPLE__
+                case SDL_SCANCODE_LGUI: return "Left Command";
+                case SDL_SCANCODE_RGUI: return "Right Command";
+                case SDL_SCANCODE_LALT: return "Left Option";
+                case SDL_SCANCODE_RALT: return "Right Option";
+#elif defined(_WIN32)
+                case SDL_SCANCODE_LGUI: return "Left Windows";
+                case SDL_SCANCODE_RGUI: return "Right Windows";
+#endif
+                default: break;
+            }
+            const char* n = SDL_GetScancodeName(SDL_Scancode(b.code));
+            return n && *n ? n : "Key " + std::to_string(b.code);
+        }
+        case Binding::Kind::PadButton:
+            switch (SDL_GamepadButton(b.code)) {
+                case SDL_GAMEPAD_BUTTON_SOUTH: return "A Button";
+                case SDL_GAMEPAD_BUTTON_EAST: return "B Button";
+                case SDL_GAMEPAD_BUTTON_WEST: return "X Button";
+                case SDL_GAMEPAD_BUTTON_NORTH: return "Y Button";
+                case SDL_GAMEPAD_BUTTON_BACK: return "Back Button";
+                case SDL_GAMEPAD_BUTTON_GUIDE: return "Home Button";
+                case SDL_GAMEPAD_BUTTON_START: return "Start Button";
+                case SDL_GAMEPAD_BUTTON_LEFT_STICK: return "Left Stick Press";
+                case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return "Right Stick Press";
+                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return "Left Bumper";
+                case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return "Right Bumper";
+                case SDL_GAMEPAD_BUTTON_DPAD_UP: return "Up D-Pad";
+                case SDL_GAMEPAD_BUTTON_DPAD_DOWN: return "Down D-Pad";
+                case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return "Left D-Pad";
+                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return "Right D-Pad";
+                case SDL_GAMEPAD_BUTTON_MISC1: return "Share Button";
+                case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1: return "Right Paddle 1";
+                case SDL_GAMEPAD_BUTTON_LEFT_PADDLE1: return "Left Paddle 1";
+                case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2: return "Right Paddle 2";
+                case SDL_GAMEPAD_BUTTON_LEFT_PADDLE2: return "Left Paddle 2";
+                case SDL_GAMEPAD_BUTTON_TOUCHPAD: return "Touchpad Press";
+                default: return "Controller Button " + std::to_string(b.code);
+            }
+        case Binding::Kind::PadAxis: {
+            const bool neg = b.dir < 0;
+            switch (SDL_GamepadAxis(b.code)) {
+                case SDL_GAMEPAD_AXIS_LEFTX: return neg ? "Left Stick Left" : "Left Stick Right";
+                case SDL_GAMEPAD_AXIS_LEFTY: return neg ? "Left Stick Up" : "Left Stick Down";
+                case SDL_GAMEPAD_AXIS_RIGHTX: return neg ? "Right Stick Left" : "Right Stick Right";
+                case SDL_GAMEPAD_AXIS_RIGHTY: return neg ? "Right Stick Up" : "Right Stick Down";
+                case SDL_GAMEPAD_AXIS_LEFT_TRIGGER: return "Left Trigger";
+                case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: return "Right Trigger";
+                default: return "Controller Axis " + std::to_string(b.code) + (neg ? "-" : "+");
+            }
+        }
+    }
+    return "?";
+}
+
 namespace {
 bool parse(const std::string& text, Binding& out, bool hotkey);
 }
@@ -520,9 +586,9 @@ std::string Manager::describe(Button b) const {
     std::string s;
     for (const auto& bind : config_.buttons[int(b)]) {
         if (!s.empty()) s += ", ";
-        s += to_string(bind);
+        s += display_name(bind);
     }
-    return s.empty() ? "none" : s;
+    return s.empty() ? "None" : s;
 }
 
 std::string Manager::describe(Hotkey h) const {
@@ -530,16 +596,10 @@ std::string Manager::describe(Hotkey h) const {
     for (const auto& c : config_.hotkeys[int(h)]) {
         if (!s.empty()) s += ", ";
         std::string part;
-        for (const auto& b : c) {
-            std::string t = to_string(b);
-            if (b.kind == Binding::Kind::Key) t = t.substr(4);  // "F5"
-            else if (part.empty()) t = "pad " + t.substr(4);
-            else t = t.substr(4);
-            part += (part.empty() ? "" : " + ") + t;
-        }
+        for (const auto& b : c) part += (part.empty() ? "" : " + ") + display_name(b);  // "Back Button + Right Bumper"
         s += part;
     }
-    return s.empty() ? "none" : s;
+    return s.empty() ? "None" : s;
 }
 
 std::string Manager::take_message() {

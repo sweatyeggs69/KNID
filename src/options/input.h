@@ -28,6 +28,8 @@ struct Binding {
 // "key:X", "pad:a", "axis:leftx-", "axis:righttrigger+"
 std::string to_string(const Binding& b);
 bool from_string(const std::string& s, Binding& out);
+// Friendly name for menus and messages: "Up Arrow", "Left D-Pad", "A Button", "Left Stick Up".
+std::string display_name(const Binding& b);
 
 // Emulator shortcuts, stored as input.hotkey.<id> (id from key_name). Each shortcut is a list of
 // chords. A chord is one keyboard key, or one or two controller buttons held together.
@@ -98,8 +100,8 @@ public:
 
     void reset_to_defaults();
     const Config& config() const { return config_; }
-    std::string describe(Button b) const;  // "X, pad a" style summary for messages
-    std::string describe(Hotkey h) const;  // "F5, pad back + rightshoulder"
+    std::string describe(Button b) const;  // "X, A Button" style summary for menus and messages
+    std::string describe(Hotkey h) const;  // "F5, Back Button + Right Bumper"
     std::string take_message();           // one-shot status text for the on-screen display
     int gamepad_count() const { return int(pads_.size()); }
 
