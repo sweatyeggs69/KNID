@@ -1,8 +1,10 @@
-<h1 align="center">
-  <img src="docs/knid-icon.png" width="128" height="128" align="middle" alt="KNID icon: a yellow star on a night sky">
-  &nbsp;
-  <img src="docs/knid-logo.png" height="118" align="middle" alt="KNID">
-</h1>
+<p align="center">
+  <img src="assets/icon/knid-icon.png" alt="KNID app icon" width="128">
+</p>
+
+<p align="center">
+  <img src="docs/knid-logo.png" alt="KNID" width="520">
+</p>
 
 <p align="center">
   Play <b>Kirby: Nightmare in Dream Land</b> natively on macOS, Windows and Linux.
@@ -36,7 +38,7 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 1. **Download** KNID for your system and open it.
 2. **Choose your ROM.** Click **Choose ROM...** and pick your dump. KNID only remembers where the
    file is; it never copies, uploads or changes it.
-3. **Play.** Press **Play**. Use **Create Shortcut** to start the game directly next time.
+3. **Play.** Press **Play**. To start the game directly next time, add a shortcut in **Settings > Game**.
 
 ## Features
 
@@ -44,7 +46,8 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 - **Themed launcher** with your game's title screen behind it and **Continue** to pick up where you left off.
 - **One settings menu (F1)** for display (scaling, widescreen, screen effects) and controls.
 - **Controllers and remapping** for keyboard and gamepads.
-- **Save states**: ten slots plus Auto, with thumbnails, quick save/load, save to a new slot, and
+- **Save states**: ten slots plus Auto, with thumbnails, quick save/load (to the Auto slot unless you pick another),
+  save to a new slot, and
   optional auto-load on launch.
 - **Import saves** from RetroArch, mGBA, VBA-M and others.
 - **RetroAchievements**, optional: sign in to earn achievements.
@@ -72,10 +75,13 @@ Defaults; change them in Settings > Controls.
 | L / R | A / S | Shoulders or triggers |
 | Start / Select | Enter / Backspace | Start / Back |
 | Settings menu | F1 or Esc | |
-| Quick save / load | F5 / F8 | Back + R / Back + L |
+| Quick save / load | Page Up / Page Down (Fn + Up / Down on a Mac laptop) | Back + R / Back + L |
 | Save to new slot | F9 | |
 | Previous / next slot | F6 / F7 | Back + D-pad left / right |
 | Fullscreen | F11 | |
+
+Quick save and quick load use the Auto slot until you pick another slot (F6 / F7, or click a slot in
+the States tab). Closing the game also saves to the Auto slot.
 
 ## FAQ
 

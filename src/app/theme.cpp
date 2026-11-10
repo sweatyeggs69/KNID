@@ -21,15 +21,6 @@ ImFont* g_button = nullptr;
 
 ImVec4 rgb(int r, int g, int b, float a = 1.0f) { return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a); }
 
-// Small deterministic hash for star placement.
-float hash01(std::uint32_t x) {
-    x ^= x >> 16;
-    x *= 0x7feb352dU;
-    x ^= x >> 15;
-    x *= 0x846ca68bU;
-    x ^= x >> 16;
-    return float(x & 0xFFFFFF) / float(0xFFFFFF);
-}
 }  // namespace
 
 const Palette& palette() {
@@ -128,22 +119,7 @@ ImFont* font_title() { return g_title; }
 ImFont* font_small() { return g_small; }
 ImFont* font_button() { return g_button; }
 
-void draw_star(ImDrawList* dl, ImVec2 c, float r, ImU32 color, float rot, bool filled) {
-    ImVec2 pts[10];
-    for (int i = 0; i < 10; ++i) {
-        float a = rot - IM_PI / 2 + float(i) * IM_PI / 5;
-        float rr = (i & 1) ? r * 0.45f : r;
-        pts[i] = ImVec2(c.x + std::cos(a) * rr, c.y + std::sin(a) * rr);
-    }
-    if (filled) {
-        // Fan from the center keeps the concave shape correct.
-        for (int i = 0; i < 10; ++i) dl->AddTriangleFilled(c, pts[i], pts[(i + 1) % 10], color);
-    } else {
-        dl->AddPolyline(pts, 10, color, ImDrawFlags_Closed, std::max(1.5f, r * 0.12f));
-    }
-}
-
-void draw_starfield(ImDrawList* dl, ImVec2 mn, ImVec2 mx, double t) {
+void draw_backdrop(ImDrawList* dl, ImVec2 mn, ImVec2 mx) {
     const Palette& c = palette();
     ImU32 top = u32(c.night), bottom = ImGui::ColorConvertFloat4ToU32(ImVec4(0.30f, 0.16f, 0.42f, 1.0f));
     dl->AddRectFilledMultiColor(mn, mx, top, top, bottom, bottom);
@@ -152,35 +128,6 @@ void draw_starfield(ImDrawList* dl, ImVec2 mn, ImVec2 mx, double t) {
     ImVec2 glow(mn.x + w * 0.82f, mn.y + h * 0.18f);
     for (int i = 24; i >= 1; --i)
         dl->AddCircleFilled(glow, h * 0.013f * float(i), u32(c.pink, 0.012f), 64);
-    // Twinkling dots.
-    int dots = int(w * h / 3500.0f);
-    for (int i = 0; i < dots; ++i) {
-        float x = mn.x + hash01(std::uint32_t(i) * 3 + 1) * w;
-        float y = mn.y + hash01(std::uint32_t(i) * 3 + 2) * h;
-        float phase = hash01(std::uint32_t(i) * 3 + 3) * 6.2831f;
-        float tw = 0.45f + 0.55f * float(0.5 + 0.5 * std::sin(t * (0.8 + phase * 0.3) + phase));
-        float size = 0.8f + hash01(std::uint32_t(i) * 7 + 5) * 1.6f;
-        dl->AddCircleFilled(ImVec2(x, y), size, u32(c.text, tw * 0.8f), 8);
-    }
-    // A few big drifting stars.
-    for (int i = 0; i < 7; ++i) {
-        float bx = hash01(std::uint32_t(i) * 11 + 101), by = hash01(std::uint32_t(i) * 11 + 102);
-        float speed = 4.0f + hash01(std::uint32_t(i) * 11 + 103) * 8.0f;
-        float x = mn.x + std::fmod(bx * w + float(t) * speed, w + 60.0f) - 30.0f;
-        float y = mn.y + by * h + std::sin(float(t) * 0.7f + float(i)) * 6.0f;
-        float r = 6.0f + hash01(std::uint32_t(i) * 11 + 104) * 9.0f;
-        float a = 0.35f + 0.35f * float(0.5 + 0.5 * std::sin(t * 1.3 + i));
-        draw_star(dl, ImVec2(x, y), r, u32(c.yellow, a), float(t) * 0.3f + float(i));
-    }
-    // A shooting star every few seconds.
-    double cycle = std::fmod(t, 7.0);
-    if (cycle < 0.9) {
-        float k = float(cycle / 0.9);
-        ImVec2 a(mn.x + w * (0.15f + 0.5f * k), mn.y + h * (0.1f + 0.25f * k));
-        ImVec2 b(a.x - w * 0.08f, a.y - h * 0.04f);
-        dl->AddLine(a, b, u32(c.text, 0.6f * (1 - k)), 2.0f);
-        draw_star(dl, a, 5.0f, u32(c.yellow, 1 - k), float(t) * 4);
-    }
 }
 
 bool big_button(const char* label, ImVec2 size, bool primary) {
@@ -199,7 +146,7 @@ bool big_button(const char* label, ImVec2 size, bool primary) {
 
     // Bounce: lift up a few pixels with an overshoot ease.
     float e = anim * anim * (3 - 2 * anim);
-    float lift = 0.0f;  // feedback is color and the star only; buttons never move
+    float lift = 0.0f;  // feedback is color and the outline only; buttons never move
     ImVec2 a(pos.x, pos.y - lift), b(pos.x + size.x, pos.y + size.y - lift);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float rounding = size.y * 0.5f;
@@ -216,10 +163,6 @@ bool big_button(const char* label, ImVec2 size, bool primary) {
     const char* end = ImGui::FindRenderedTextEnd(label);
     ImVec2 ts = ImGui::CalcTextSize(label, end);
     ImVec2 tp(a.x + (size.x - ts.x) * 0.5f, a.y + (size.y - ts.y) * 0.5f);
-    if (anim > 0.01f) {
-        draw_star(dl, ImVec2(tp.x - 18, a.y + size.y * 0.5f), 8.0f * e, u32(c.yellow, e),
-                  float(ImGui::GetTime()) * 2.0f);
-    }
     dl->AddText(tp, u32(primary ? c.text_on_pink : c.text), label, end);
     ImGui::PopFont();
     return pressed;

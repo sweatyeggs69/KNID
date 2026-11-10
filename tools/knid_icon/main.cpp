@@ -1,6 +1,7 @@
-// knid_icon: renders the KNID app icon (original artwork: a night sky with a big wishing star)
+// knid_icon: renders the KNID app icon (original artwork: the word KNID in the style of the pink
+// KNID wordmark, on a blush-pink tile)
 // into an .iconset folder of PNGs for iconutil. No external image libraries.
-#include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -24,20 +25,70 @@ Rgba over(Rgba dst, Rgba src) {  // src over dst, straight alpha
             (src.b * src.a + dst.b * dst.a * (1 - src.a)) / a, a};
 }
 
-bool in_star(float x, float y, float cx, float cy, float r, float rot) {
-    std::array<std::pair<float, float>, 10> p;
-    for (int i = 0; i < 10; ++i) {
-        float a = rot - 3.14159265f / 2 + float(i) * 3.14159265f / 5;
-        float rr = (i & 1) ? r * 0.47f : r;
-        p[i] = {cx + std::cos(a) * rr, cy + std::sin(a) * rr};
+// Signed distance to an axis-aligned box from (x0,y0) to (x1,y1). Negative inside.
+float sd_rect(float x, float y, float x0, float y0, float x1, float y1) {
+    float qx = std::fabs(x - (x0 + x1) / 2) - (x1 - x0) / 2, qy = std::fabs(y - (y0 + y1) / 2) - (y1 - y0) / 2;
+    return std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) + std::min(std::max(qx, qy), 0.0f);
+}
+// Capsule of thickness t along the segment a-b: round ends, like the rounded KNID wordmark.
+float sd_capsule(float x, float y, float ax, float ay, float bx, float by, float t) {
+    float dx = bx - ax, dy = by - ay;
+    float h = std::clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy), 0.0f, 1.0f);
+    return std::hypot(x - ax - dx * h, y - ay - dy * h) - t / 2;
+}
+
+// Letter shapes built from strokes of thickness t between `top` and `bot`, starting at x.
+// Returns the distance; `width` gets the letter's advance.
+float sd_letter(float u, float v, char ch, float x, float top, float bot, float t, float& width) {
+    const float h = bot - top, m = t / 2;
+    switch (ch) {
+    case 'K': {
+        float w = width = h * 0.80f;
+        float d = sd_capsule(u, v, x + m, top + m, x + m, bot - m, t);
+        d = std::min(d, sd_capsule(u, v, x + t * 0.9f, top + h * 0.60f, x + w - m, top + m, t));
+        return std::min(d, sd_capsule(u, v, x + t * 0.9f + (w - t) * 0.22f, top + h * 0.45f, x + w - m, bot - m, t));
     }
-    bool in = false;
-    for (int i = 0, j = 9; i < 10; j = i++) {
-        if (((p[i].second > y) != (p[j].second > y)) &&
-            (x < (p[j].first - p[i].first) * (y - p[i].second) / (p[j].second - p[i].second) + p[i].first))
-            in = !in;
+    case 'N': {
+        float w = width = h * 0.82f;
+        float d = sd_capsule(u, v, x + m, top + m, x + m, bot - m, t);
+        d = std::min(d, sd_capsule(u, v, x + w - m, top + m, x + w - m, bot - m, t));
+        return std::min(d, sd_capsule(u, v, x + m, top + m, x + w - m, bot - m, t));
     }
-    return in;
+    case 'I':
+        width = t;
+        return sd_capsule(u, v, x + m, top + m, x + m, bot - m, t);
+    case 'D': {
+        float w = width = h * 0.80f;
+        float y0 = top + m, y1 = bot - m, r = (y1 - y0) / 2, cx = x + w - m - r;
+        float shape = u <= cx ? sd_rect(u, v, x + m, y0, cx, y1) : std::hypot(u - cx, v - (y0 + y1) / 2) - r;
+        return std::fabs(shape) - m;
+    }
+    default:
+        width = 0;
+        return 1e9f;
+    }
+}
+
+// The KNID word, centered horizontally. Unit coordinates.
+constexpr const char* kText = "KNID";
+constexpr float kTop = 0.40f, kBot = 0.60f, kStroke = 0.054f, kGap = 0.03f;
+float sd_word(float u, float v) {
+    float total = 0, w = 0;
+    for (const char* c = kText; *c; ++c) {
+        sd_letter(0, 0, *c, 0, kTop, kBot, kStroke, w);
+        total += w + (c[1] ? kGap : 0);
+    }
+    float x = 0.5f - total / 2, d = 1e9f;
+    for (const char* c = kText; *c; ++c) {
+        d = std::min(d, sd_letter(u, v, *c, x, kTop, kBot, kStroke, w));
+        x += w + kGap;
+    }
+    return d;
+}
+
+float smoothstep(float e0, float e1, float x) {
+    float t = std::clamp((x - e0) / (e1 - e0), 0.0f, 1.0f);
+    return t * t * (3 - 2 * t);
 }
 
 // Superellipse "squircle" mask like macOS icons, in unit coordinates [0,1].
@@ -46,29 +97,23 @@ bool in_squircle(float u, float v) {
     return std::pow(x, 5.0f) + std::pow(y, 5.0f) <= 1.0f;
 }
 
-Rgba shade(float u, float v) {
+// Original artwork: the word KNID drawn like the KNID wordmark (pink fill, rose outline, and a
+// soft shadow the outline casts on the fill) on a blush-pink tile.
+// `aa` is the width of one sample in unit coordinates, for anti-aliased edges.
+Rgba shade(float u, float v, float aa) {
     Rgba out{0, 0, 0, 0};
     if (!in_squircle(u, v)) return out;
-    Rgba top{0.11f, 0.08f, 0.24f, 1}, bottom{0.36f, 0.18f, 0.48f, 1};
-    out = mix(top, bottom, v);
-    // Twinkles (fixed positions).
-    const float dots[][3] = {{0.22f, 0.24f, 0.010f}, {0.74f, 0.20f, 0.008f}, {0.30f, 0.70f, 0.007f},
-                             {0.80f, 0.62f, 0.009f}, {0.62f, 0.80f, 0.006f}, {0.18f, 0.50f, 0.006f}};
-    for (auto& d : dots) {
-        float dist = std::hypot(u - d[0], v - d[1]);
-        if (dist < d[2] * 2.5f) out = over(out, {1, 0.97f, 0.92f, std::max(0.0f, 1 - dist / (d[2] * 2.5f))});
-    }
-    // Soft pink glow behind the star.
-    float g = std::hypot(u - 0.5f, v - 0.52f);
-    out = over(out, {1.0f, 0.56f, 0.73f, std::max(0.0f, 0.55f - g * 1.6f)});
-    // Star with a pink rim and a highlight.
-    float rot = -0.18f;
-    if (in_star(u, v, 0.5f, 0.53f, 0.315f, rot)) out = over(out, {0.93f, 0.44f, 0.63f, 1});
-    if (in_star(u, v, 0.5f, 0.53f, 0.275f, rot)) out = over(out, {1.0f, 0.84f, 0.36f, 1});
-    if (in_star(u, v, 0.48f, 0.50f, 0.13f, rot)) out = over(out, {1.0f, 0.95f, 0.70f, 0.75f});
-    // Two little companion stars.
-    if (in_star(u, v, 0.80f, 0.30f, 0.055f, 0.3f)) out = over(out, {1.0f, 0.84f, 0.36f, 0.95f});
-    if (in_star(u, v, 0.24f, 0.78f, 0.040f, -0.4f)) out = over(out, {1.0f, 0.70f, 0.82f, 0.95f});
+    out = mix({1.0f, 0.941f, 0.969f, 1}, {1.0f, 0.831f, 0.906f, 1}, v);
+    const Rgba rim{0.898f, 0.282f, 0.494f, 1}, fill{1.0f, 0.608f, 0.765f, 1}, shadow{0.314f, 0.078f, 0.176f, 1};
+    const float rim_w = 0.017f;
+    float d = sd_word(u, v);
+    if (d > rim_w + aa) return out;
+    out = over(out, {rim.r, rim.g, rim.b, smoothstep(rim_w + aa, rim_w - aa, d)});
+    float inside = smoothstep(aa, -aa, d);
+    out = over(out, {fill.r, fill.g, fill.b, inside});
+    float o = kStroke * 0.07f;
+    float d2 = sd_word(u - o, v - o * 1.2f);
+    out = over(out, {shadow.r, shadow.g, shadow.b, 0.35f * inside * smoothstep(-kStroke * 0.10f, kStroke * 0.02f, d2)});
     return out;
 }
 
@@ -140,7 +185,7 @@ std::vector<std::uint8_t> render(int size) {
             float r = 0, g = 0, b = 0, a = 0;
             for (int sy = 0; sy < ss; ++sy)
                 for (int sx = 0; sx < ss; ++sx) {
-                    Rgba c = shade((x + (sx + 0.5f) / ss) / size, (y + (sy + 0.5f) / ss) / size);
+                    Rgba c = shade((x + (sx + 0.5f) / ss) / size, (y + (sy + 0.5f) / ss) / size, 1.0f / (size * ss));
                     r += c.r * c.a; g += c.g * c.a; b += c.b * c.a; a += c.a;
                 }
             float n = float(ss * ss);

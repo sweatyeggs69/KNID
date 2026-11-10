@@ -91,7 +91,7 @@ private:
     void draw_launcher();
     void draw_game_tab(Config& config);
     void draw_save_section();
-    void draw_shortcut_controls(bool big);
+    void draw_shortcut_controls();
     // Save states
     void ensure_store();
     SDL_Texture* thumb_texture(int slot);
@@ -105,7 +105,7 @@ private:
     void show_toast(const std::string& text, int slot, toast::Style style = toast::Style::Success);
     void draw_states_tab();
     std::unique_ptr<states::Store> store_;
-    int slot_ = 1;
+    int slot_ = states::kAutoSlot;  // the slot the save / load shortcuts use
     std::array<SDL_Texture*, states::kSlots + 1> thumb_tex_{};
     std::array<std::time_t, states::kSlots + 1> thumb_at_{};
     std::string states_msg_;
@@ -157,7 +157,6 @@ private:
     std::vector<std::int16_t> audio_buf_;
     long frames_ = 0;
     bool running_ = true;
-    bool shortcut_popup_ = false;
     double game_started_at_ = 0;
     bool menu_was_open_ = false;
 
@@ -238,16 +237,19 @@ bool App::init_window() {
         presenter_->reset_history();
     });
     register_options_tab("Achievements", [this](Config&) { achievements_->draw_tab(); });
-    slot_ = std::clamp(config_.get_int("states.slot", 1), 1, states::kSlots);
+    // Shortcuts use the Auto slot until the player picks a numbered one. (states.slot, used before
+    // 1.1.0, always pointed at a numbered slot, so it is left behind.)
+    slot_ = std::clamp(config_.get_int("states.current_slot", states::kAutoSlot), states::kAutoSlot, states::kSlots);
     states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) quick_save(); },
                          [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
                          [this](int d) {
                              if (!game_ || screen_ != Screen::Game) return;
-                             slot_ = (slot_ - 1 + d + states::kSlots * 4) % states::kSlots + 1;
-                             config_.set_int("states.slot", slot_);
+                             const int n = states::kSlots + 1;  // Auto, then slots 1..kSlots
+                             slot_ = ((slot_ + d) % n + n) % n;
+                             config_.set_int("states.current_slot", slot_);
                              ensure_store();
                              const states::SlotInfo& i = store_ ? store_->info(slot_) : states::SlotInfo{};
-                             show_toast("Save state slot " + std::to_string(slot_) + (i.exists ? "" : " (empty)"),
+                             show_toast("Save state: " + states::slot_name(slot_) + (i.exists ? "" : " (empty)"),
                                         i.exists ? slot_ : -1, toast::Style::Info);
                          },
                          [this] { if (game_ && screen_ == Screen::Game) save_new_slot(); }});
@@ -640,15 +642,8 @@ void App::draw_launcher() {
         if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
         if (focus_main) ImGui::SetItemDefaultFocus();
     }
-    float half = (bw - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-    if (theme::big_button("Settings", ImVec2(half, 46), false)) set_menu_open(true);
-    ImGui::SameLine();
-    bool has_shortcut = shortcut_state(ShortcutPlace::Applications) == ShortcutState::Ours ||
-                        shortcut_state(ShortcutPlace::Desktop) == ShortcutState::Ours;
-    if (theme::big_button(has_shortcut ? "Shortcuts..." : "Create Shortcut", ImVec2(half, 46), false)) {
-        shortcut_popup_ = true;
-        ImGui::OpenPopup("Create a shortcut");
-    }
+    // Shortcuts are made in Settings > Game.
+    if (theme::big_button("Settings", ImVec2(bw, 46), false)) set_menu_open(true);
     if (back) ImGui::SetKeyboardFocusHere();
     if (theme::big_button("Quit", ImVec2(bw, 46), false)) running_ = false;
 
@@ -665,23 +660,6 @@ void App::draw_launcher() {
     }
     update_ui::draw_launcher_notice(*updater_, config_);
 
-    // Same width as the launcher card, no title bar: a pink heading like the settings pages.
-    ImGui::SetNextWindowSize(ImVec2(std::min(480.0f, ds.x - 40), 0), ImGuiCond_Always);
-    if (ImGui::BeginPopupModal("Create a shortcut", nullptr,
-                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoSavedSettings)) {
-        ImGui::Dummy(ImVec2(0, 2));
-        theme::centered_text("Create a shortcut", theme::font_button(), c.pink);
-        ImGui::Dummy(ImVec2(0, 2));
-        ImGui::PushTextWrapPos(0);
-        ImGui::TextColored(c.text_dim, "A shortcut starts the game directly, skipping this menu.");
-        ImGui::PopTextWrapPos();
-        ImGui::Dummy(ImVec2(0, 4));
-        draw_shortcut_controls(true);
-        ImGui::Dummy(ImVec2(0, 4));
-        if (theme::big_button("Done", ImVec2(ImGui::GetContentRegionAvail().x, 46), false)) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-    }
     end_card();
 }
 
@@ -727,7 +705,6 @@ std::string App::hotkey_hint(bool brief) const {
 }
 
 void App::show_toast(const std::string& text, int slot, toast::Style style) {
-    std::string body = hotkey_hint(true) + "  (" + states::slot_name(slot_) + ")";
     std::vector<std::uint8_t> rgba;
     if (slot >= 0 && store_) {
         const states::SlotInfo& i = store_->info(slot);
@@ -743,7 +720,7 @@ void App::show_toast(const std::string& text, int slot, toast::Style style) {
             }
         }
     }
-    toast::show(text, body, rgba.empty() ? nullptr : rgba.data(), rgba.empty() ? 0 : kW, rgba.empty() ? 0 : kH,
+    toast::show(text, {}, rgba.empty() ? nullptr : rgba.data(), rgba.empty() ? 0 : kW, rgba.empty() ? 0 : kH,
                 style == toast::Style::Warning ? 4500 : 2500, style);
 }
 
@@ -779,7 +756,7 @@ bool App::save_new_slot() {
         return false;
     }
     slot_ = s;
-    config_.set_int("states.slot", slot_);
+    config_.set_int("states.current_slot", slot_);
     return save_slot(s);
 }
 
@@ -944,15 +921,14 @@ void App::draw_states_tab() {
         } else {
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddRectFilled(tp, ImVec2(tp.x + thumb_w, tp.y + thumb_h), theme::u32(c.night), 10);
-            theme::draw_star(dl, ImVec2(tp.x + thumb_w / 2, tp.y + thumb_h / 2 - 8), 16, theme::u32(c.text_dim, 0.4f));
             const char* empty = i.exists ? "Unusable" : "Empty";
             ImVec2 ts = ImGui::CalcTextSize(empty);
-            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + thumb_h / 2 + 14), theme::u32(c.text_dim), empty);
+            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + (thumb_h - ts.y) / 2), theme::u32(c.text_dim), empty);
             ImGui::Dummy(ImVec2(thumb_w, thumb_h));
         }
-        if (ImGui::IsItemClicked() && slot != states::kAutoSlot) {
+        if (ImGui::IsItemClicked()) {
             slot_ = slot;
-            config_.set_int("states.slot", slot_);
+            config_.set_int("states.current_slot", slot_);
         }
         ImGui::Dummy(ImVec2(0, 2));
         std::string title = states::slot_name(slot) + (i.label.empty() ? "" : ": " + i.label);
@@ -969,15 +945,14 @@ void App::draw_states_tab() {
             ImGui::TextColored(i.exists ? c.bad : c.text_dim, "%s", i.exists ? i.error.c_str() : "No state saved yet");
         }
         ImGui::PopFont();
-        if (slot != states::kAutoSlot) {
-            ImGui::BeginDisabled(!game_);
-            if (ImGui::SmallButton("Save")) save_slot(slot);
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-        }
+        ImGui::BeginDisabled(!game_);
+        if (ImGui::SmallButton("Save")) save_slot(slot);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
         ImGui::BeginDisabled(!usable);
         if (ImGui::SmallButton("Load")) {
-            if (slot != states::kAutoSlot) { slot_ = slot; config_.set_int("states.slot", slot_); }
+            slot_ = slot;
+            config_.set_int("states.current_slot", slot_);
             load_slot(slot);
         }
         ImGui::EndDisabled();
@@ -1280,10 +1255,10 @@ void App::draw_game_tab(Config& config) {
 
     ImGui::SeparatorText("Shortcut");
     ImGui::TextWrapped("A shortcut starts the game directly, skipping the launcher.");
-    draw_shortcut_controls(false);
+    draw_shortcut_controls();
 }
 
-void App::draw_shortcut_controls(bool big) {
+void App::draw_shortcut_controls() {
     const auto& c = theme::palette();
 #if defined(__APPLE__)
     const char* apps_name = "Applications";
@@ -1305,18 +1280,13 @@ void App::draw_shortcut_controls(bool big) {
         ShortcutState st = shortcut_state(place);
         std::string label = (st == ShortcutState::Ours ? "Update " : "Add to ") + where;
         if (st == ShortcutState::Ours) label = "Update " + where + " shortcut";
-        // In the popup the buttons fill the row; Remove sits at the end of it.
-        const float row = ImGui::GetContentRegionAvail().x, remove_w = 110.0f;
-        const float main_w = st == ShortcutState::Ours ? row - remove_w - ImGui::GetStyle().ItemSpacing.x : row;
-        bool pressed = big ? theme::big_button(label.c_str(), ImVec2(main_w, 46)) : ImGui::Button(label.c_str());
-        if (pressed) {
+        if (ImGui::Button(label.c_str())) {
             pending_shortcut_place_ = place;
             report(create_shortcut(place));
         }
         if (st == ShortcutState::Ours) {
             ImGui::SameLine();
-            bool remove = big ? theme::big_button("Remove", ImVec2(remove_w, 46), false) : ImGui::Button("Remove shortcut");
-            if (remove) report(remove_shortcut(place));
+            if (ImGui::Button("Remove shortcut")) report(remove_shortcut(place));
         }
         ImGui::PopID();
     }
@@ -1352,13 +1322,13 @@ void App::draw_ui() {
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         bool have_frame = attract_ || (game_ && game_paused_);
         if (have_frame) {
-            // Soft night tint over the game backdrop, plus a few stars.
+            // Soft night tint over the game backdrop.
             bg->AddRectFilledMultiColor(ImVec2(0, 0), ds, theme::u32(theme::palette().night, 0.35f),
                                         theme::u32(theme::palette().night, 0.35f),
                                         theme::u32(theme::palette().night, 0.75f),
                                         theme::u32(theme::palette().night, 0.75f));
         } else {
-            theme::draw_starfield(bg, ImVec2(0, 0), ds, ImGui::GetTime());
+            theme::draw_backdrop(bg, ImVec2(0, 0), ds);
         }
     }
     switch (screen_) {
