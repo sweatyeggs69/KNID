@@ -6,6 +6,8 @@
 
 #include <functional>
 
+struct ImFont;
+
 #include "options/settings_io.h"
 
 namespace knid {
@@ -15,7 +17,8 @@ class Config;
 SettingsIO settings_io(Config& config);
 }  // namespace knid
 
-// Draws the options tabs with Dear ImGui into the current window. Call between
+// Draws the selected settings page (picked in the menu's sidebar) with Dear ImGui into the
+// current window. Call between
 // ImGui::NewFrame() and ImGui::Render().
 void draw_options_panel(knid::Config& config);
 
@@ -43,5 +46,7 @@ void options_menu_toggle();
 void options_menu_set_open(bool open);
 bool options_menu_open();
 void draw_options_menu(knid::Config& config);
+// Fonts for the page headings and the small hint text (the theme's). Optional.
+void set_options_menu_fonts(ImFont* heading, ImFont* small);
 // Optional "Quit to launcher" button. Without a handler the button is hidden.
 void set_options_menu_quit_handler(std::function<void()> on_quit);

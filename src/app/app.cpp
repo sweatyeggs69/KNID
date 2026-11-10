@@ -44,6 +44,15 @@ constexpr int kW = gba::kScreenWidth, kH = gba::kScreenHeight;
 constexpr const char* kRetailBiosSha1 = "300c20df6731a33952ded8c436f7f186d25d3492";
 constexpr double kFrameSeconds = double(gba::kCyclesPerFrame) / gba::kCpuHz;
 
+// Keeps a row of buttons inside the settings page: stays on the same line only when the next
+// button still fits, otherwise starts a new line.
+void same_line_if_fits(const char* next_label) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float next_w = ImGui::CalcTextSize(next_label, nullptr, true).x + style.FramePadding.x * 2.0f;
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + next_w <= right) ImGui::SameLine();
+}
+
 void draw_test_pattern(std::array<std::uint16_t, kW * kH>& fb, std::uint32_t frame) {
     for (int y = 0; y < kH; ++y)
         for (int x = 0; x < kW; ++x) {
@@ -204,6 +213,7 @@ bool App::init_window() {
     ImGui_ImplSDL3_InitForSDLRenderer(window_, renderer_);
     ImGui_ImplSDLRenderer3_Init(renderer_);
     theme::apply(SDL_GetWindowPixelDensity(window_));
+    set_options_menu_fonts(theme::font_button(), theme::font_small());
     if (config_.get_string("display.fullscreen", "0") == "1") SDL_SetWindowFullscreen(window_, true);
     toast::set_renderer(renderer_);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
@@ -1082,7 +1092,7 @@ void App::draw_save_section() {
         SDL_OpenURL(file_url(saves).c_str());
     }
     ImGui::BeginDisabled(!rom_.ok);
-    ImGui::SameLine();
+    same_line_if_fits("Import save...");
     if (ImGui::Button("Import save...")) {
         static const SDL_DialogFileFilter filters[] = {{"Game saves", "sav;srm;sa1;dsv"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(
@@ -1093,7 +1103,7 @@ void App::draw_save_section() {
             },
             this, window_, filters, 2, nullptr, false);
     }
-    ImGui::SameLine();
+    same_line_if_fits("Export save...");
     if (ImGui::Button("Export save...")) {
         static const SDL_DialogFileFilter filters[] = {{"Game save", "sav"}};
         std::string def = (fs::path(rom_.path).parent_path() / "Kirby - Nightmare in Dream Land.sav").string();
@@ -1105,7 +1115,7 @@ void App::draw_save_section() {
             },
             this, window_, filters, 1, def.c_str());
     }
-    ImGui::SameLine();
+    same_line_if_fits("Restore backup...");
     if (ImGui::Button("Restore backup...")) open_backup_list_ = true;
     ImGui::EndDisabled();
     ImGui::TextDisabled("Imports .sav / .srm battery saves from mGBA, VBA-M, RetroArch and others.");
