@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
+#include <stb_image.h>
 
 #include <array>
 #include <cctype>
@@ -31,6 +32,9 @@
 #include "options/options_panel.h"
 #include "options/display.h"
 #include "options/presenter.h"
+
+extern const unsigned char knid_image_logo[];
+extern const unsigned knid_image_logo_size;
 #include "sha1.h"
 #include "update/update_ui.h"
 #include "update/updater.h"
@@ -43,6 +47,15 @@ namespace {
 constexpr int kW = gba::kScreenWidth, kH = gba::kScreenHeight;
 constexpr const char* kRetailBiosSha1 = "300c20df6731a33952ded8c436f7f186d25d3492";
 constexpr double kFrameSeconds = double(gba::kCyclesPerFrame) / gba::kCpuHz;
+
+// Keeps a row of buttons inside the settings page: stays on the same line only when the next
+// button still fits, otherwise starts a new line.
+void same_line_if_fits(const char* next_label) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float next_w = ImGui::CalcTextSize(next_label, nullptr, true).x + style.FramePadding.x * 2.0f;
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + next_w <= right) ImGui::SameLine();
+}
 
 void draw_test_pattern(std::array<std::uint16_t, kW * kH>& fb, std::uint32_t frame) {
     for (int y = 0; y < kH; ++y)
@@ -123,6 +136,9 @@ private:
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
     SDL_Texture* frame_tex_ = nullptr;
+    SDL_Texture* logo_tex_ = nullptr;  // the KNID logo on the launcher card
+    int logo_w_ = 0, logo_h_ = 0;
+    void load_logo();
     SDL_AudioStream* audio_ = nullptr;
     std::unique_ptr<Presenter> presenter_;           // in-game video (display.* options)
     std::unique_ptr<input::Manager> controls_;       // keyboard/gamepad (input.* options)
@@ -190,6 +206,7 @@ bool App::init_window() {
     update_refresh_rate();
     frame_tex_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, kW, kH);
     SDL_SetTextureScaleMode(frame_tex_, SDL_SCALEMODE_NEAREST);
+    load_logo();
 
     SDL_AudioSpec spec{SDL_AUDIO_S16, 2, gba::kAudioRate};
     if (!opt_.mute)
@@ -204,6 +221,7 @@ bool App::init_window() {
     ImGui_ImplSDL3_InitForSDLRenderer(window_, renderer_);
     ImGui_ImplSDLRenderer3_Init(renderer_);
     theme::apply(SDL_GetWindowPixelDensity(window_));
+    set_options_menu_fonts(theme::font_button(), theme::font_small());
     if (config_.get_string("display.fullscreen", "0") == "1") SDL_SetWindowFullscreen(window_, true);
     toast::set_renderer(renderer_);
     presenter_ = std::make_unique<Presenter>(renderer_, settings_io(config_));
@@ -278,6 +296,7 @@ void App::shutdown() {
     presenter_.reset();
     if (audio_) SDL_DestroyAudioStream(audio_);
     if (frame_tex_) SDL_DestroyTexture(frame_tex_);
+    if (logo_tex_) SDL_DestroyTexture(logo_tex_);
     if (renderer_) SDL_DestroyRenderer(renderer_);
     if (window_) SDL_DestroyWindow(window_);
 }
@@ -526,6 +545,21 @@ void App::capture_window(const std::string& path) {
     }
 }
 
+void App::load_logo() {
+    int w = 0, h = 0, n = 0;
+    unsigned char* px = stbi_load_from_memory(knid_image_logo, int(knid_image_logo_size), &w, &h, &n, 4);
+    if (!px) return;  // the launcher falls back to the text title
+    logo_tex_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
+    if (logo_tex_) {
+        SDL_UpdateTexture(logo_tex_, nullptr, px, w * 4);
+        SDL_SetTextureBlendMode(logo_tex_, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureScaleMode(logo_tex_, SDL_SCALEMODE_LINEAR);
+        logo_w_ = w;
+        logo_h_ = h;
+    }
+    stbi_image_free(px);
+}
+
 void App::begin_card(const char* id, ImVec2 size) {
     ImVec2 ds = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, ds.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -573,10 +607,16 @@ void App::draw_launcher() {
     const auto& c = theme::palette();
     ImVec2 ds = ImGui::GetIO().DisplaySize;
     begin_card("##launcher", ImVec2(std::min(560.0f, ds.x - 40), 0));
-    ImGui::Dummy(ImVec2(0, 2));
-    theme::centered_text("KNID", theme::font_title(), c.pink);
-    ImGui::Dummy(ImVec2(0, 2));
-    ImGui::Dummy(ImVec2(0, 8));
+    if (logo_tex_) {
+        const float lw = 230.0f, lh = lw * float(logo_h_) / float(logo_w_);
+        ImGui::SetCursorPosX((ImGui::GetWindowSize().x - lw) * 0.5f);
+        ImGui::Image((ImTextureID)(intptr_t)logo_tex_, ImVec2(lw, lh));
+        ImGui::Dummy(ImVec2(0, 6));
+    } else {
+        ImGui::Dummy(ImVec2(0, 2));
+        theme::centered_text("KNID", theme::font_title(), c.pink);
+        ImGui::Dummy(ImVec2(0, 12));
+    }
     float bw = ImGui::GetContentRegionAvail().x;
     // Keyboard/gamepad: the main button starts focused; B / Backspace moves the focus to Quit.
     bool back = !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
@@ -612,25 +652,34 @@ void App::draw_launcher() {
     if (back) ImGui::SetKeyboardFocusHere();
     if (theme::big_button("Quit", ImVec2(bw, 46), false)) running_ = false;
 
-    ImGui::Dummy(ImVec2(0, 4));
-    ImGui::PushFont(theme::font_small());
-    theme::centered_text("F1: settings (ROM, BIOS, saves, display, controls)", nullptr, c.text_dim);
-    if (!rom_error_.empty()) ImGui::TextColored(c.bad, "%s", rom_error_.c_str());
-    if (!info_.empty() && ImGui::GetTime() < info_until_) {
+    // Status lines only; the Settings button already says where settings live.
+    const bool show_info = !info_.empty() && ImGui::GetTime() < info_until_;
+    if (!rom_error_.empty() || show_info) {
+        ImGui::Dummy(ImVec2(0, 2));
+        ImGui::PushFont(theme::font_small());
         ImGui::PushTextWrapPos(0);
-        ImGui::TextColored(c.yellow, "%s", info_.c_str());
+        if (!rom_error_.empty()) ImGui::TextColored(c.bad, "%s", rom_error_.c_str());
+        if (show_info) ImGui::TextColored(c.yellow, "%s", info_.c_str());
         ImGui::PopTextWrapPos();
+        ImGui::PopFont();
     }
-    ImGui::PopFont();
     update_ui::draw_launcher_notice(*updater_, config_);
 
+    // Same width as the launcher card, no title bar: a pink heading like the settings pages.
+    ImGui::SetNextWindowSize(ImVec2(std::min(480.0f, ds.x - 40), 0), ImGuiCond_Always);
     if (ImGui::BeginPopupModal("Create a shortcut", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
-        ImGui::TextUnformatted("A shortcut starts the game directly, skipping this menu.");
+                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::Dummy(ImVec2(0, 2));
+        theme::centered_text("Create a shortcut", theme::font_button(), c.pink);
+        ImGui::Dummy(ImVec2(0, 2));
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(c.text_dim, "A shortcut starts the game directly, skipping this menu.");
+        ImGui::PopTextWrapPos();
         ImGui::Dummy(ImVec2(0, 4));
         draw_shortcut_controls(true);
         ImGui::Dummy(ImVec2(0, 4));
-        if (theme::big_button("Done", ImVec2(360, 42), false)) ImGui::CloseCurrentPopup();
+        if (theme::big_button("Done", ImVec2(ImGui::GetContentRegionAvail().x, 46), false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     end_card();
@@ -1082,7 +1131,7 @@ void App::draw_save_section() {
         SDL_OpenURL(file_url(saves).c_str());
     }
     ImGui::BeginDisabled(!rom_.ok);
-    ImGui::SameLine();
+    same_line_if_fits("Import save...");
     if (ImGui::Button("Import save...")) {
         static const SDL_DialogFileFilter filters[] = {{"Game saves", "sav;srm;sa1;dsv"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(
@@ -1093,7 +1142,7 @@ void App::draw_save_section() {
             },
             this, window_, filters, 2, nullptr, false);
     }
-    ImGui::SameLine();
+    same_line_if_fits("Export save...");
     if (ImGui::Button("Export save...")) {
         static const SDL_DialogFileFilter filters[] = {{"Game save", "sav"}};
         std::string def = (fs::path(rom_.path).parent_path() / "Kirby - Nightmare in Dream Land.sav").string();
@@ -1105,7 +1154,7 @@ void App::draw_save_section() {
             },
             this, window_, filters, 1, def.c_str());
     }
-    ImGui::SameLine();
+    same_line_if_fits("Restore backup...");
     if (ImGui::Button("Restore backup...")) open_backup_list_ = true;
     ImGui::EndDisabled();
     ImGui::TextDisabled("Imports .sav / .srm battery saves from mGBA, VBA-M, RetroArch and others.");
@@ -1256,21 +1305,23 @@ void App::draw_shortcut_controls(bool big) {
         ShortcutState st = shortcut_state(place);
         std::string label = (st == ShortcutState::Ours ? "Update " : "Add to ") + where;
         if (st == ShortcutState::Ours) label = "Update " + where + " shortcut";
-        bool pressed = big ? theme::big_button(label.c_str(), ImVec2(st == ShortcutState::Ours ? 250 : 360, 44))
-                           : ImGui::Button(label.c_str());
+        // In the popup the buttons fill the row; Remove sits at the end of it.
+        const float row = ImGui::GetContentRegionAvail().x, remove_w = 110.0f;
+        const float main_w = st == ShortcutState::Ours ? row - remove_w - ImGui::GetStyle().ItemSpacing.x : row;
+        bool pressed = big ? theme::big_button(label.c_str(), ImVec2(main_w, 46)) : ImGui::Button(label.c_str());
         if (pressed) {
             pending_shortcut_place_ = place;
             report(create_shortcut(place));
         }
         if (st == ShortcutState::Ours) {
             ImGui::SameLine();
-            bool remove = big ? theme::big_button("Remove", ImVec2(100, 44), false) : ImGui::Button("Remove shortcut");
+            bool remove = big ? theme::big_button("Remove", ImVec2(remove_w, 46), false) : ImGui::Button("Remove shortcut");
             if (remove) report(remove_shortcut(place));
         }
         ImGui::PopID();
     }
     if (!info_.empty() && ImGui::GetTime() < info_until_) {
-        ImGui::PushTextWrapPos(big ? 360.0f : 0.0f);
+        ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(c.yellow, "%s", info_.c_str());
         ImGui::PopTextWrapPos();
     }

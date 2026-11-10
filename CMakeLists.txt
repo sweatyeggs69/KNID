@@ -5,7 +5,7 @@ if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 endif()
 
-project(knid LANGUAGES C CXX VERSION 1.0.2)
+project(knid LANGUAGES C CXX VERSION 1.0.3)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -190,6 +190,14 @@ if(TARGET SDL3::SDL3)
             COMMENT "Embedding Fredoka ${weight}")
         list(APPEND knid_font_cpp "${out}")
     endforeach()
+    # The KNID logo for the launcher card (a small palette PNG of docs/knid-logo.png).
+    set(out "${CMAKE_CURRENT_BINARY_DIR}/image_logo.cpp")
+    add_custom_command(OUTPUT "${out}"
+        COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/logo/knid-logo.png -DOUTPUT=${out}
+                -DSYMBOL=knid_image_logo -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+        DEPENDS assets/logo/knid-logo.png cmake/embed.cmake
+        COMMENT "Embedding the KNID logo")
+    list(APPEND knid_font_cpp "${out}")
     # License texts compiled in (shown in F1 > About and by --licenses).
     foreach(pair "license;LICENSE" "notices;THIRD_PARTY_NOTICES.md" "fredoka_ofl;assets/fonts/OFL.txt")
         list(GET pair 0 name)

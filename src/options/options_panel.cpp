@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,8 +40,11 @@ struct PanelState {
     };
     std::vector<ExtraTab> extra_tabs;
     std::string select_tab;  // applied once on the next draw
+    std::string current_tab;  // the page shown in the sidebar layout
     bool menu_open = false;
     std::function<void()> on_quit;
+    ImFont* heading_font = nullptr;
+    ImFont* small_font = nullptr;
 };
 PanelState& state() {
     static PanelState s;
@@ -301,42 +305,110 @@ void controls_tab(input::Manager& in, Config& config) {
 }
 }  // namespace
 
-void draw_options_panel(knid::Config& config) {
-    auto& st = state();
+namespace {
+// One sidebar entry: a full-width rounded pill. The selected page is pink with dark text.
+bool nav_item(const char* label, bool selected, float height) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec2 size(ImGui::GetContentRegionAvail().x, height);
+    const bool pressed = ImGui::InvisibleButton(label, size);
+    const bool hovered = ImGui::IsItemHovered();
+    const bool held = ImGui::IsItemActive();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 end(pos.x + size.x, pos.y + size.y);
+    const float rounding = style.FrameRounding;
+    if (selected) {
+        dl->AddRectFilled(pos, end, ImGui::GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_Button), rounding);
+    } else if (hovered || held) {
+        dl->AddRectFilled(pos, end, ImGui::GetColorU32(ImGuiCol_FrameBgHovered), rounding);
+    }
+    // Dark text on the pink pill, the theme's normal text elsewhere.
+    const ImU32 text = selected ? IM_COL32(58, 20, 46, 255) : ImGui::GetColorU32(ImGuiCol_Text);
+    const ImVec2 ts = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(pos.x + style.FramePadding.x + 2.0f, pos.y + (size.y - ts.y) * 0.5f), text, label);
+    return pressed;
+}
+
+struct Page {
+    std::string name;
+    std::function<void()> draw;
+};
+
+std::vector<Page> collect_pages(PanelState& st, knid::Config& config) {
+    std::vector<Page> pages;
+    auto extras = [&](bool before) {
+        for (auto& t : st.extra_tabs)
+            if (t.before_builtin == before) pages.push_back({t.name, [&t, &config] { if (t.draw) t.draw(config); }});
+    };
+    extras(true);
+    pages.push_back({"Display", [&config] { display_tab(config); }});
+    pages.push_back({"Controls", [&st, &config] { controls_tab(*st.input, config); }});
+    extras(false);
+    return pages;
+}
+
+void ensure_input(PanelState& st, knid::Config& config) {
     if (st.config != &config || !st.input) {
         st.config = &config;
         st.input = std::make_unique<input::Manager>(settings_io(config));
         st.input->set_shortcuts_enabled(false);
     }
-    if (ImGui::BeginTabBar("options")) {
-        std::string select = std::move(st.select_tab);
-        st.select_tab.clear();
-        auto flags = [&](const char* name) {
-            return select == name ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-        };
-        auto extras = [&](bool before) {
-            for (auto& t : st.extra_tabs) {
-                if (t.before_builtin != before) continue;
-                if (ImGui::BeginTabItem(t.name.c_str(), nullptr, flags(t.name.c_str()))) {
-                    if (t.draw) t.draw(config);
-                    ImGui::EndTabItem();
-                }
-            }
-        };
-        extras(true);
-        if (ImGui::BeginTabItem("Display", nullptr, flags("Display"))) {
-            display_tab(config);
-            ImGui::EndTabItem();
+}
+
+// Draws the selected page in a padded, scrollable pane that fills the rest of the window.
+void draw_page(PanelState& st, const Page& page) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    // Outer pane: rounded background with even padding on every side.
+    // The pane and its body split the side padding (16 + 10 = 26) so the body's scrollbar sits
+    // 16 from the edge with a 10 gap before the content.
+    constexpr float kPaneX = 16.0f, kBodyX = 10.0f;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPaneX, 20.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 18.0f);
+    const bool pane = ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
+                                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar(2);
+    if (pane) {
+        if (st.heading_font) ImGui::PushFont(st.heading_font);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + kBodyX);
+        ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_Button), "%s", page.name.c_str());
+        if (st.heading_font) ImGui::PopFont();
+        ImGui::Dummy(ImVec2(0, style.ItemSpacing.y * 0.25f));
+        // Inner body scrolls under the fixed heading. Its padding is small, so headers and
+        // separators stay inside the pane's padding instead of reaching into it.
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kBodyX, 0.0f));
+        const bool body = ImGui::BeginChild("body", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PopStyleVar();
+        if (body) {
+            // Inputs take about half the pane so their labels stay readable beside them.
+            ImGui::PushItemWidth(std::min(ImGui::GetContentRegionAvail().x * 0.5f, ImGui::GetFontSize() * 14.0f));
+            ImGui::PushTextWrapPos(0.0f);  // long lines wrap inside the pane instead of running off
+            page.draw();
+            ImGui::PopTextWrapPos();
+            ImGui::PopItemWidth();
         }
-        if (ImGui::BeginTabItem("Controls", nullptr, flags("Controls"))) {
-            controls_tab(*st.input, config);
-            ImGui::EndTabItem();
-        } else if (st.input->remapping()) {
-            st.input->cancel_remap();  // left the tab mid-rebind
-        }
-        extras(false);
-        ImGui::EndTabBar();
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
     }
+    ImGui::EndChild();
+}
+}  // namespace
+
+void draw_options_panel(knid::Config& config) {
+    auto& st = state();
+    ensure_input(st, config);
+    std::vector<Page> pages = collect_pages(st, config);
+    if (!st.select_tab.empty()) {
+        st.current_tab = std::move(st.select_tab);
+        st.select_tab.clear();
+    }
+    auto it = std::find_if(pages.begin(), pages.end(), [&](const Page& p) { return p.name == st.current_tab; });
+    if (it == pages.end()) {
+        it = pages.begin();
+        if (it != pages.end()) st.current_tab = it->name;
+    }
+    if (st.current_tab != "Controls" && st.input->remapping()) st.input->cancel_remap();  // left mid-rebind
+    if (it != pages.end()) draw_page(st, *it);
     st.input->take_message();
 }
 
@@ -369,6 +441,11 @@ bool options_menu_open() { return state().menu_open; }
 
 void set_options_menu_quit_handler(std::function<void()> on_quit) { state().on_quit = std::move(on_quit); }
 
+void set_options_menu_fonts(ImFont* heading, ImFont* small) {
+    state().heading_font = heading;
+    state().small_font = small;
+}
+
 void draw_options_menu(knid::Config& config) {
     auto& st = state();
     if (!st.menu_open) return;
@@ -377,28 +454,95 @@ void draw_options_menu(knid::Config& config) {
     // Dim the paused game behind the menu with the theme's modal dim color (set in theme.cpp).
     ImGui::GetBackgroundDrawList()->AddRectFilled(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
                                                   ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
-    const ImVec2 size(std::min(vp->Size.x * 0.9f, 640.0f * ImGui::GetFontSize() / 13.0f),
-                      std::min(vp->Size.y * 0.9f, 560.0f * ImGui::GetFontSize() / 13.0f));
+    // A fixed 3:2 panel in window points. It never grows past kMaxWidth, so it stays the same
+    // size in fullscreen and on HiDPI screens, and shrinks (keeping 3:2) in small windows.
+    constexpr float kMaxWidth = 900.0f, kMargin = 24.0f;
+    float w = std::min(vp->Size.x - 2 * kMargin, kMaxWidth);
+    float h = w / 1.5f;
+    if (h > vp->Size.y - 2 * kMargin) {
+        h = vp->Size.y - 2 * kMargin;
+        w = h * 1.5f;
+    }
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f), ImGuiCond_Always,
                             ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
     bool open = true;
-    if (ImGui::Begin("Settings", &open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
-        const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
-        if (ImGui::BeginChild("tabs", ImVec2(0, -footer))) draw_options_panel(config);
-        ImGui::EndChild();
-        ImGui::Separator();
-        if (ImGui::Button("Resume")) open = false;
-        if (st.on_quit) {
-            ImGui::SameLine();
-            if (ImGui::Button("Quit to launcher")) {
-                open = false;
-                st.on_quit();
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 16.0f));
+    ImVec4 bg = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+    bg.w = 1.0f;  // opaque, so nothing on the paused game shows through the text
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, bg);
+    const bool shown = ImGui::Begin("Settings", nullptr,
+                                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+    if (shown) {
+        ensure_input(st, config);
+        std::vector<Page> pages = collect_pages(st, config);
+        if (!st.select_tab.empty()) {
+            st.current_tab = std::move(st.select_tab);
+            st.select_tab.clear();
+        }
+        if (st.current_tab.empty() && !pages.empty()) st.current_tab = pages.front().name;
+
+        // Sidebar: title, one entry per page, then Resume / Quit pinned to the bottom.
+        const float nav_w = std::max(ImGui::GetFontSize() * 8.5f, w * 0.22f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 14.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 4.0f));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+        if (ImGui::BeginChild("nav", ImVec2(nav_w, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
+                              ImGuiWindowFlags_NoScrollbar)) {
+            if (st.heading_font) ImGui::PushFont(st.heading_font);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetStyle().FramePadding.x + 2.0f);
+            ImGui::TextUnformatted("Settings");
+            if (st.heading_font) ImGui::PopFont();
+            ImGui::Dummy(ImVec2(0, 6.0f));
+
+            // Bottom block: buttons and the close hint. In short windows the hint goes first,
+            // then the entries get shorter, so every page and both buttons stay visible.
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const float btn_h = ImGui::GetFrameHeight();
+            const int buttons = st.on_quit ? 2 : 1;
+            const float hint_h = ImGui::GetTextLineHeight() * 1.5f;
+            const float bottom = ImGui::GetWindowHeight() - style.WindowPadding.y;
+            const float n = float(pages.size());
+            float block = (btn_h + style.ItemSpacing.y) * float(buttons);
+            float room = bottom - ImGui::GetCursorPosY() - block - style.ItemSpacing.y * 2.0f;
+            const bool show_hint = room - hint_h >= n * (btn_h + style.ItemSpacing.y);
+            if (show_hint) {
+                block += hint_h;
+                room -= hint_h;
+            }
+            const float item_h = std::clamp(room / n - style.ItemSpacing.y, ImGui::GetTextLineHeight() + 4.0f, btn_h);
+            for (const Page& p : pages) {
+                if (nav_item(p.name.c_str(), p.name == st.current_tab, item_h)) st.current_tab = p.name;
+            }
+            const float y = bottom - block;
+            if (y > ImGui::GetCursorPosY()) ImGui::SetCursorPosY(y);
+            if (ImGui::Button("Resume", ImVec2(-FLT_MIN, 0))) open = false;
+            if (st.on_quit) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+                if (ImGui::Button("Quit to launcher", ImVec2(-FLT_MIN, 0))) {
+                    open = false;
+                    st.on_quit();
+                }
+                ImGui::PopStyleColor(3);
+            }
+            if (show_hint) {
+                if (st.small_font) ImGui::PushFont(st.small_font);
+                ImGui::TextDisabled("F1 or Esc closes this menu");
+                if (st.small_font) ImGui::PopFont();
             }
         }
-        ImGui::SameLine();
-        ImGui::TextDisabled("F1 or Esc closes this menu");
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+
+        ImGui::SameLine(0.0f, 8.0f);
+        draw_options_panel(config);
     }
     ImGui::End();
     if (!open) options_menu_set_open(false);
