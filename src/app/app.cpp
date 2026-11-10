@@ -705,7 +705,6 @@ std::string App::hotkey_hint(bool brief) const {
 }
 
 void App::show_toast(const std::string& text, int slot, toast::Style style) {
-    std::string body = hotkey_hint(true) + "  (" + states::slot_name(slot_) + ")";
     std::vector<std::uint8_t> rgba;
     if (slot >= 0 && store_) {
         const states::SlotInfo& i = store_->info(slot);
@@ -721,7 +720,7 @@ void App::show_toast(const std::string& text, int slot, toast::Style style) {
             }
         }
     }
-    toast::show(text, body, rgba.empty() ? nullptr : rgba.data(), rgba.empty() ? 0 : kW, rgba.empty() ? 0 : kH,
+    toast::show(text, {}, rgba.empty() ? nullptr : rgba.data(), rgba.empty() ? 0 : kW, rgba.empty() ? 0 : kH,
                 style == toast::Style::Warning ? 4500 : 2500, style);
 }
 
