@@ -205,6 +205,50 @@ void controls_tab(input::Manager& in, Config& config) {
     }
 
     ImGui::Spacing();
+    ImGui::SeparatorText("Turbo");
+    {
+        const input::TurboSettings& t = in.config().turbo;
+        bool on = config.get_bool("input.turbo", t.enabled);
+        if (ImGui::Checkbox("Turbo buttons", &on)) {
+            config.set_bool("input.turbo", on);
+            in.reload();
+        }
+        help_marker("While you hold a turbo button, the game sees it pressed over and over. "
+                    "Handy for rapid fire, but turn it off for a button you need to hold, "
+                    "such as B to inhale.");
+        ImGui::BeginDisabled(!on);
+        int rate = std::clamp(config.get_int("input.turbo.rate", t.rate), input::kTurboMinRate,
+                              input::kTurboMaxRate);
+        if (ImGui::SliderInt("Turbo rate", &rate, input::kTurboMinRate, input::kTurboMaxRate,
+                             rate == 1 ? "%d press per second" : "%d presses per second",
+                             ImGuiSliderFlags_AlwaysClamp)) {
+            config.set("input.turbo.rate", std::to_string(rate));
+            in.reload();
+        }
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Turbo on:");
+        static constexpr Button kTurboButtons[] = {Button::A, Button::B, Button::L, Button::R};
+        std::uint16_t mask = t.buttons;
+        bool mask_changed = false;
+        for (Button b : kTurboButtons) {
+            ImGui::SameLine();
+            ImGui::PushID(200 + int(b));
+            const std::uint16_t bit = std::uint16_t(1u << int(b));
+            bool sel = (mask & bit) != 0;
+            if (ImGui::Checkbox(input::name(b), &sel)) {
+                mask = sel ? std::uint16_t(mask | bit) : std::uint16_t(mask & ~bit);
+                mask_changed = true;
+            }
+            ImGui::PopID();
+        }
+        if (mask_changed) {
+            config.set("input.turbo.buttons", input::turbo_buttons_to_string(mask));
+            in.reload();
+        }
+        ImGui::EndDisabled();
+    }
+
+    ImGui::Spacing();
     ImGui::SeparatorText("Shortcuts");
     ImGui::TextWrapped("For a controller shortcut, hold the buttons together (up to two) and "
                        "let go. F1, F11 and Esc are kept for the menu and fullscreen.");

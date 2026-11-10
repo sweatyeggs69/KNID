@@ -248,6 +248,30 @@ std::vector<Binding> split(const std::string& text) {
     return out;
 }
 
+std::string turbo_buttons_to_string(std::uint16_t buttons) {
+    std::string out;
+    for (int i = 0; i < kButtonCount; ++i) {
+        if (!(buttons & (1u << i))) continue;
+        if (!out.empty()) out += ", ";
+        out += name(Button(i));
+    }
+    return out.empty() ? "none" : out;
+}
+
+std::uint16_t turbo_buttons_from_string(const std::string& text) {
+    std::uint16_t out = 0;
+    std::size_t p = 0;
+    while (p <= text.size()) {
+        std::size_t comma = text.find(',', p);
+        if (comma == std::string::npos) comma = text.size();
+        const std::string item = lower(trim(text.substr(p, comma - p)));
+        for (int i = 0; i < kButtonCount; ++i)
+            if (item == lower(name(Button(i)))) out |= std::uint16_t(1u << i);
+        p = comma + 1;
+    }
+    return out;
+}
+
 Config load(const SettingsIO& io) {
     Config c = default_config();
     if (!io.get) return c;
@@ -257,6 +281,16 @@ Config load(const SettingsIO& io) {
         if (v.empty()) continue;  // keep default
         if (lower(v) == "none") c.buttons[i].clear();
         else if (auto list = split(v); !list.empty()) c.buttons[i] = std::move(list);
+    }
+    {
+        const std::string on = lower(trim(io.get("input.turbo", "")));
+        if (on == "1" || on == "true" || on == "yes" || on == "on") c.turbo.enabled = true;
+        else if (on == "0" || on == "false" || on == "no" || on == "off") c.turbo.enabled = false;
+        const std::string rate = trim(io.get("input.turbo.rate", ""));
+        if (!rate.empty())
+            c.turbo.rate = std::clamp(std::atoi(rate.c_str()), kTurboMinRate, kTurboMaxRate);
+        const std::string buttons = trim(io.get("input.turbo.buttons", ""));
+        if (!buttons.empty()) c.turbo.buttons = turbo_buttons_from_string(buttons);
     }
     for (int i = 0; i < kHotkeyCount; ++i) {
         const std::string v = trim(io.get(std::string("input.hotkey.") + key_name(Hotkey(i)), ""));
@@ -270,6 +304,9 @@ Config load(const SettingsIO& io) {
 void store(const Config& c, const SettingsIO& io) {
     if (!io.set) return;
     io.set("input.deadzone", std::to_string(c.deadzone_percent));
+    io.set("input.turbo", c.turbo.enabled ? "true" : "false");
+    io.set("input.turbo.rate", std::to_string(std::clamp(c.turbo.rate, kTurboMinRate, kTurboMaxRate)));
+    io.set("input.turbo.buttons", turbo_buttons_to_string(c.turbo.buttons));
     for (Button b : kRemapOrder) io.set(std::string("input.") + name(b), join(c.buttons[int(b)]));
     for (int i = 0; i < kHotkeyCount; ++i)
         io.set(std::string("input.hotkey.") + key_name(Hotkey(i)), join_chords(c.hotkeys[i]));
@@ -282,7 +319,10 @@ Manager::Manager(SettingsIO io) : io_(std::move(io)) {
     // First run (or keys added since): write the full control map so users can edit settings.ini by hand.
     if (io_.get && io_.set) {
         const std::string missing = "\x01";
-        bool complete = io_.get("input.deadzone", missing) != missing;
+        bool complete = io_.get("input.deadzone", missing) != missing &&
+                        io_.get("input.turbo", missing) != missing &&
+                        io_.get("input.turbo.rate", missing) != missing &&
+                        io_.get("input.turbo.buttons", missing) != missing;
         for (int i = 0; complete && i < kButtonCount; ++i)
             complete = io_.get(std::string("input.") + name(Button(i)), missing) != missing;
         for (int i = 0; complete && i < kHotkeyCount; ++i)
@@ -345,6 +385,8 @@ std::uint16_t Manager::poll() const {
     if ((mask & bit(Button::Up)) && (mask & bit(Button::Down))) mask &= ~(bit(Button::Up) | bit(Button::Down));
     return mask;
 }
+
+std::uint16_t Manager::poll_frame() { return turbo_.step(poll(), config_.turbo); }
 
 void Manager::start_remap(Button only) {
     start_remap();

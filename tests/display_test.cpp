@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "options/display.h"
+#include "options/turbo.h"
 
 using namespace knid::display;
 
@@ -118,7 +119,39 @@ static void settings_roundtrip() {
     CHECK(t.aspect == Aspect::Native && t.overlay_strength == 40);
 }
 
+static void turbo() {
+    using namespace knid::input;
+    CHECK(turbo_period(5) == 12 && turbo_period(1) == 60);
+    CHECK(turbo_period(99) == 12 && turbo_period(0) == 60);  // never faster than 5 per second
+    TurboSettings t;
+    t.enabled = true;
+    t.rate = 5;
+    t.buttons = 0x1;  // A only
+    TurboState st;
+    // Holding A and B for one second: A pulses 5 times, B stays held.
+    int presses = 0, b_frames = 0;
+    bool prev = false;
+    for (int f = 0; f < 60; ++f) {
+        const std::uint16_t m = st.step(0x3, t);
+        const bool a = m & 0x1;
+        if (a && !prev) ++presses;
+        prev = a;
+        if (m & 0x2) ++b_frames;
+        if (f < 6) CHECK(a);       // first press lands on the first frame
+        else if (f < 12) CHECK(!a);
+    }
+    CHECK(presses == 5 && b_frames == 60);
+    // Releasing restarts the cycle so the next tap is a press right away.
+    CHECK(st.step(0x0, t) == 0);
+    CHECK(st.step(0x1, t) == 0x1);
+    // Off: buttons pass through untouched.
+    t.enabled = false;
+    st.reset();
+    for (int f = 0; f < 30; ++f) CHECK(st.step(0x3, t) == 0x3);
+}
+
 int main() {
+    turbo();
     layouts();
     colors();
     blending();
