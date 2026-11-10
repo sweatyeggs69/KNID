@@ -68,11 +68,16 @@ std::string ra_md5_hex(const std::uint8_t* data, std::size_t size) {
     return out;
 }
 
-std::uint32_t ra_read_memory(const gba::Gba& gba, std::uint32_t address, std::uint8_t* buffer,
+std::uint32_t ra_read_memory(const gba::Gba* gba, std::uint32_t address, std::uint8_t* buffer,
                              std::uint32_t num_bytes) {
+    if (!gba) {
+        std::uint32_t n = 0;
+        for (; n < num_bytes && address + n < 0x58000; ++n) buffer[n] = 0;
+        return n;
+    }
     // rcheevos GBA map: 0x00000 IWRAM (32 KiB), 0x08000 EWRAM (256 KiB), 0x48000 cartridge SRAM
     // (64 KiB window; this game has 32 KiB, the rest reads as 0).
-    auto iw = gba.iwram(), ew = gba.ewram(), sr = gba.sram();
+    auto iw = gba->iwram(), ew = gba->ewram(), sr = gba->sram();
     for (std::uint32_t i = 0; i < num_bytes; ++i) {
         std::uint32_t a = address + i;
         if (a < 0x8000) buffer[i] = a < iw.size() ? iw[a] : 0;
@@ -153,8 +158,8 @@ struct Achievements::Impl {
     static std::uint32_t RC_CCONV read_memory(std::uint32_t address, std::uint8_t* buffer, std::uint32_t num_bytes,
                                               rc_client_t* c) {
         Impl* s = self(c);
-        if (!s || !s->gba) return 0;
-        return ra_read_memory(*s->gba, address, buffer, num_bytes);
+        if (!s) return 0;
+        return ra_read_memory(s->gba, address, buffer, num_bytes);
     }
 
     static void RC_CCONV server_call(const rc_api_request_t* request, rc_client_server_callback_t callback,
@@ -733,10 +738,14 @@ void Achievements::frame(const gba::Gba& gba) {
     s.gba = nullptr;  // memory is only read during do_frame
 }
 
-void Achievements::idle() {
+void Achievements::idle(const gba::Gba* game) {
     Impl& s = *impl_;
+    // The game's achievement list arrives here, and rcheevos checks every address it uses right
+    // away, so the game's memory must be readable now, not only inside frame().
+    s.gba = game;
     http::pump();
     if (!s.frame_ran) rc_client_idle(s.client);
+    s.gba = nullptr;
     s.frame_ran = false;
     s.flush_toasts();
     if (s.restart_pending) {

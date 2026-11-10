@@ -38,8 +38,9 @@ public:
     void game_closed();
     // After every emulated game frame.
     void frame(const gba::Gba& gba);
-    // Once per refresh when no game frame ran (launcher, settings menu, paused).
-    void idle();
+    // Once per refresh (launcher, settings menu, paused, or after game frames). game: the running
+    // game session's Gba, or nullptr, so replies handled here can read its memory.
+    void idle(const gba::Gba* game);
     // A save state (or Undo load) replaced the game's memory: achievement progress restarts.
     void state_loaded();
     // In hardcore mode loading save states is not allowed; why says so in a sentence.
@@ -60,8 +61,10 @@ private:
 // MD5 of data as 32 lowercase hex digits (the RetroAchievements hash for GBA ROMs).
 std::string ra_md5_hex(const std::uint8_t* data, std::size_t size);
 // Reads emulated memory at a RetroAchievements GBA address (0x00000 IWRAM, 0x08000 EWRAM,
-// 0x48000 cartridge SRAM, up to 0x57FFF). Returns the number of bytes read.
-std::uint32_t ra_read_memory(const gba::Gba& gba, std::uint32_t address, std::uint8_t* buffer,
+// 0x48000 cartridge SRAM, up to 0x57FFF). Returns the number of bytes read. With no gba (no game
+// frame is running) addresses in the map read as 0: rcheevos probes every address once when a game's
+// achievements arrive, and a 0-byte answer there marks the achievement Unsupported for good.
+std::uint32_t ra_read_memory(const gba::Gba* gba, std::uint32_t address, std::uint8_t* buffer,
                              std::uint32_t num_bytes);
 
 }  // namespace knid
