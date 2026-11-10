@@ -75,9 +75,7 @@
       "choices": [
         { "label": "3:2", "set": { "display.aspect": "3:2" } },
         { "label": "16:10", "set": { "display.aspect": "16:10" } },
-        { "label": "16:9", "set": { "display.aspect": "16:9" } },
-        { "label": "21:9", "set": { "display.aspect": "21:9" } },
-        { "label": "32:9", "set": { "display.aspect": "32:9" } }
+        { "label": "16:9", "set": { "display.aspect": "16:9" } }
       ],
       "defaults": { "display.aspect": "3:2" }
     },
