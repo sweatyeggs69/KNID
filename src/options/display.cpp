@@ -19,8 +19,6 @@ const char* name(Aspect a) {
         case Aspect::Native: return "3:2";
         case Aspect::R16x10: return "16:10";
         case Aspect::R16x9: return "16:9";
-        case Aspect::R21x9: return "21:9";
-        case Aspect::R32x9: return "32:9";
         default: return "?";
     }
 }
@@ -82,7 +80,9 @@ void store(const Settings& s, const Setter& set) {
 Settings load(const Getter& get) {
     Settings s;
     parse_enum(trim(get("display.scale", "")), s.scale);
-    parse_enum(trim(get("display.aspect", "")), s.aspect);
+    const std::string aspect = trim(get("display.aspect", ""));
+    if (aspect == "21:9" || aspect == "32:9") s.aspect = Aspect::R16x9;  // removed; widest left
+    else parse_enum(aspect, s.aspect);
     parse_enum(trim(get("display.overlay", "")), s.overlay);
     parse_enum(trim(get("display.color", "")), s.color);
     parse_enum(trim(get("display.blend", "")), s.blend);
@@ -97,8 +97,6 @@ double aspect_ratio(Aspect a) {
     switch (a) {
         case Aspect::R16x10: return 16.0 / 10.0;
         case Aspect::R16x9: return 16.0 / 9.0;
-        case Aspect::R21x9: return 21.0 / 9.0;
-        case Aspect::R32x9: return 32.0 / 9.0;
         default: return double(kWidth) / double(kHeight);
     }
 }

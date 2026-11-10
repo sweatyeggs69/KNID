@@ -20,11 +20,12 @@ enum class ScaleMode { Integer, Fit, Count };
 
 // Shape of the game view. Native is the GBA's own 240x160 (3:2). The wider shapes never
 // stretch: they ask the renderer to draw extra columns of the level at the sides, so pixels
-// stay square (see wide_width). Pixels are always square.
-enum class Aspect { Native, R16x10, R16x9, R21x9, R32x9, Count };
+// stay square (see wide_width). Pixels are always square. 21:9 and 32:9 were removed in
+// 1.1.1: the game only loads scenery a little past the original view, so they showed gaps.
+enum class Aspect { Native, R16x10, R16x9, Count };
 
-// Widest view the runtime may be asked for, and the per-side margin that implies.
-inline constexpr int kMaxWideWidth = 568;
+// Widest view the runtime may be asked for (16:9), and the per-side margin that implies.
+inline constexpr int kMaxWideWidth = 284;
 inline constexpr int kMaxWideMargin = (kMaxWideWidth - kWidth) / 2;
 
 // Width in GBA pixels of a 160-line view with this shape (even, so margins are equal).
