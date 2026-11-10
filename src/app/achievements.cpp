@@ -537,15 +537,21 @@ void Achievements::Impl::draw_game() {
                            sum.num_unlocked_achievements, sum.num_core_achievements, sum.points_unlocked,
                            sum.points_core);
 
+    ImGui::Spacing();
+
     rc_client_achievement_list_t* list = rc_client_create_achievement_list(
         client, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE, RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
     if (!list) return;
     if (ImGui::BeginChild("##ra_list", ImVec2(0, 0), ImGuiChildFlags_None)) {
+        bool first = true;
         for (uint32_t bi = 0; bi < list->num_buckets; ++bi) {
             const rc_client_achievement_bucket_t& bucket = list->buckets[bi];
             bool only_warning = bucket.num_achievements == 1 && bucket.achievements[0]->id == kWarningAchievementId;
             if (only_warning) continue;
+            if (!first) ImGui::Spacing();
+            first = false;
             ImGui::SeparatorText(bucket.label ? bucket.label : "");
+            ImGui::Spacing();
             for (uint32_t i = 0; i < bucket.num_achievements; ++i) {
                 const rc_client_achievement_t* a = bucket.achievements[i];
                 if (a->id == kWarningAchievementId) continue;  // shown in Options instead
@@ -618,22 +624,23 @@ void Achievements::Impl::draw_tab() {
         return;
     }
 
-    // One line: account, then Options and Sign out on the right.
-    const rc_client_user_t* u = rc_client_get_user_info(client);
-    ImGui::SameLine(0, 24);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(c.text_dim, "%s, %u points (%u softcore)", u && u->display_name ? u->display_name : "",
-                       u ? u->score : 0, u ? u->score_softcore : 0);
+    // Options and Sign out sit on the checkbox line, pushed to the right when they fit and on
+    // their own line when they do not. The account gets the next line, so nothing overlaps.
     const ImGuiStyle& st = ImGui::GetStyle();
     float buttons = ImGui::CalcTextSize("Options").x + ImGui::CalcTextSize("Sign out").x + st.FramePadding.x * 4 +
                     st.ItemSpacing.x;
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons));
+    float line_end = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetScrollX();
+    float right = ImGui::GetWindowContentRegionMax().x - buttons;
+    if (right >= line_end + 24) ImGui::SameLine(right);
     if (ImGui::Button("Options")) ImGui::OpenPopup("##ra_options");
     ImGui::SameLine();
     if (ImGui::Button("Sign out")) {
         sign_out();
         return;
     }
+    const rc_client_user_t* u = rc_client_get_user_info(client);
+    ImGui::TextColored(c.text_dim, "Signed in as %s, %u points (%u softcore)",
+                       u && u->display_name ? u->display_name : "", u ? u->score : 0, u ? u->score_softcore : 0);
     if (!login_message.empty()) ImGui::TextColored(login_message_error ? c.bad : c.text_dim, "%s", login_message.c_str());
 
     if (ImGui::BeginPopup("##ra_options")) {

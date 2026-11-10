@@ -32,8 +32,7 @@ static void layouts() {
     // Widescreen never stretches: a 16:9 view is wider in GBA pixels, scaled uniformly.
     CHECK(wide_width(Aspect::Native) == 240);
     CHECK(wide_width(Aspect::R16x9) == 284);
-    CHECK(wide_width(Aspect::R21x9) == 374);
-    CHECK(wide_width(Aspect::R32x9) == kMaxWideWidth);
+    CHECK(wide_width(Aspect::R16x9) == kMaxWideWidth);
     CHECK(wide_margin(Aspect::R16x9) == 22);
     l = compute_layout(1920, 1080, ScaleMode::Integer, wide_width(Aspect::R16x9), kHeight);
     CHECK(l.scale_x == 6 && l.scale_y == 6 && l.dest.w == 284 * 6 && l.dest.h == 960);
@@ -103,7 +102,7 @@ static void settings_roundtrip() {
     std::map<std::string, std::string> kv;
     Settings s;
     s.scale = ScaleMode::Fit;
-    s.aspect = Aspect::R21x9;
+    s.aspect = Aspect::R16x10;
     s.overlay = Overlay::Lcd;
     s.overlay_strength = 70;
     s.color = ColorMode::GbaLcd;
@@ -117,6 +116,10 @@ static void settings_roundtrip() {
     kv["display.overlay_strength"] = "x";
     t = load(get);
     CHECK(t.aspect == Aspect::Native && t.overlay_strength == 40);
+    kv["display.aspect"] = "32:9";  // removed ultrawide settings fall back to 16:9
+    CHECK(load(get).aspect == Aspect::R16x9);
+    kv["display.aspect"] = "21:9";
+    CHECK(load(get).aspect == Aspect::R16x9);
 }
 
 static void turbo() {

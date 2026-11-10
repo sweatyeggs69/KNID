@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -53,13 +54,34 @@ PanelState& state() {
 
 void help_marker(const char* text) {
     ImGui::SameLine();
+    ImGui::PushTextWrapPos(-1.0f);  // the marker never wraps onto extra lines
     ImGui::TextDisabled("(?)");
+    ImGui::PopTextWrapPos();
     if (ImGui::BeginItemTooltip()) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
         ImGui::TextUnformatted(text);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+// Widens the next combo so its longest choice is not cut off by the arrow button in a small
+// window. It still leaves room on the line for the label and its (?) marker.
+float fit_combo_width(const char* label, std::initializer_list<const char*> choices) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float text = 0.0f;
+    for (const char* c : choices) text = std::max(text, ImGui::CalcTextSize(c).x);
+    const float need = text + style.FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+    const float room = ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(label).x -
+                       ImGui::CalcTextSize("(?)").x - style.ItemInnerSpacing.x - style.ItemSpacing.x * 2.0f;
+    const float width = std::max(ImGui::CalcItemWidth(), std::min(need, room));
+    ImGui::SetNextItemWidth(width);
+    return width;
+}
+
+// True when `text` shows in full in a combo box `width` wide.
+bool combo_fits(const char* text, float width) {
+    return ImGui::CalcTextSize(text).x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight() <= width;
 }
 
 template <typename E>
@@ -84,8 +106,6 @@ const char* aspect_label(Aspect a) {
         case Aspect::Native: return "Off (original 3:2)";
         case Aspect::R16x10: return "16:10";
         case Aspect::R16x9: return "16:9";
-        case Aspect::R21x9: return "21:9 (experimental)";
-        case Aspect::R32x9: return "32:9 (experimental)";
         default: return name(a);
     }
 }
@@ -107,7 +127,12 @@ void display_tab(Config& config) {
     // Widescreen shows extra level at the sides (Gba::set_wide_margin); the host applies
     // display::wide_margin(aspect) and presents Gba::wide_framebuffer().
     if (kShowWidescreen) {
-        if (ImGui::BeginCombo("Widescreen view", aspect_label(s.aspect))) {
+        const float w = fit_combo_width("Widescreen view", {aspect_label(Aspect::Native), aspect_label(Aspect::R16x10),
+                                                            aspect_label(Aspect::R16x9)});
+        // In a small window the long "Off" label would hide under the arrow, so it shortens.
+        const char* preview = aspect_label(s.aspect);
+        if (s.aspect == Aspect::Native && !combo_fits(preview, w)) preview = "Off (3:2)";
+        if (ImGui::BeginCombo("Widescreen view", preview)) {
             for (int i = 0; i < int(Aspect::Count); ++i) {
                 const Aspect a = Aspect(i);
                 if (ImGui::Selectable(aspect_label(a), a == s.aspect)) {
@@ -119,9 +144,7 @@ void display_tab(Config& config) {
         }
         help_marker("Shows more of the level at the left and right instead of stretching the "
                     "picture. Pixels always stay square, and the HUD stays where it was. Menus "
-                    "and the title screen stay 3:2. 16:10 and 16:9 show real scenery; 21:9 and "
-                    "32:9 are experimental, because the game only loads a little ahead of the "
-                    "original view, so the far edges can show unfinished scenery.");
+                    "and the title screen stay 3:2.");
     }
 
     bool fullscreen = config.get("display.fullscreen", "0") == "1";
@@ -140,6 +163,7 @@ void display_tab(Config& config) {
     help_marker("Softer, less saturated colors like the original unlit GBA screen. The game's "
                 "colors were chosen for that screen, so this is how they were meant to look.");
 
+    fit_combo_width("Frame blending", {"Off", "Blend two frames", "LCD ghosting"});
     if (ImGui::BeginCombo("Frame blending", s.blend == Blend::Off ? "Off"
                                            : s.blend == Blend::Mix ? "Blend two frames"
                                                                    : "LCD ghosting")) {
@@ -157,6 +181,7 @@ void display_tab(Config& config) {
 
     const char* overlay_labels[] = {"None", "Pixel grid", "LCD subpixels", "Scanlines"};
     int ov = int(s.overlay);
+    fit_combo_width("Screen overlay", {overlay_labels[0], overlay_labels[1], overlay_labels[2], overlay_labels[3]});
     if (ImGui::Combo("Screen overlay", &ov, overlay_labels, int(Overlay::Count))) {
         s.overlay = Overlay(ov);
         changed = true;
