@@ -257,6 +257,18 @@ if(TARGET SDL3::SDL3)
     if(APPLE AND KNID_MACOS_BUNDLE)
         include(cmake/MacBundle.cmake)
         knid_configure_bundle(knid)
+    elseif(APPLE)
+        # Plain (unbundled) build/knid: embed an Info.plist so the menu bar says KNID, not knid.
+        set(knid_plist "${CMAKE_CURRENT_BINARY_DIR}/knid-embedded-Info.plist")
+        file(WRITE "${knid_plist}" "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+            "<plist version=\"1.0\"><dict>\n"
+            "<key>CFBundleName</key><string>KNID</string>\n"
+            "<key>CFBundleDisplayName</key><string>KNID</string>\n"
+            "<key>CFBundleShortVersionString</key><string>${PROJECT_VERSION}</string>\n"
+            "</dict></plist>\n")
+        target_link_options(knid PRIVATE "LINKER:-sectcreate,__TEXT,__info_plist,${knid_plist}")
+        set_property(TARGET knid APPEND PROPERTY LINK_DEPENDS "${knid_plist}")
     endif()
     if(KNID_PACKAGE AND WIN32)
         # Release file: the single self-contained KNID.exe (static runtime, SDL, zlib; licenses
