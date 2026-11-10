@@ -91,7 +91,7 @@ private:
     void draw_launcher();
     void draw_game_tab(Config& config);
     void draw_save_section();
-    void draw_shortcut_controls(bool big);
+    void draw_shortcut_controls();
     // Save states
     void ensure_store();
     SDL_Texture* thumb_texture(int slot);
@@ -157,7 +157,6 @@ private:
     std::vector<std::int16_t> audio_buf_;
     long frames_ = 0;
     bool running_ = true;
-    bool shortcut_popup_ = false;
     double game_started_at_ = 0;
     bool menu_was_open_ = false;
 
@@ -643,15 +642,8 @@ void App::draw_launcher() {
         if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
         if (focus_main) ImGui::SetItemDefaultFocus();
     }
-    float half = (bw - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-    if (theme::big_button("Settings", ImVec2(half, 46), false)) set_menu_open(true);
-    ImGui::SameLine();
-    bool has_shortcut = shortcut_state(ShortcutPlace::Applications) == ShortcutState::Ours ||
-                        shortcut_state(ShortcutPlace::Desktop) == ShortcutState::Ours;
-    if (theme::big_button(has_shortcut ? "Shortcuts..." : "Create Shortcut", ImVec2(half, 46), false)) {
-        shortcut_popup_ = true;
-        ImGui::OpenPopup("Create a shortcut");
-    }
+    // Shortcuts are made in Settings > Game.
+    if (theme::big_button("Settings", ImVec2(bw, 46), false)) set_menu_open(true);
     if (back) ImGui::SetKeyboardFocusHere();
     if (theme::big_button("Quit", ImVec2(bw, 46), false)) running_ = false;
 
@@ -668,23 +660,6 @@ void App::draw_launcher() {
     }
     update_ui::draw_launcher_notice(*updater_, config_);
 
-    // Same width as the launcher card, no title bar: a pink heading like the settings pages.
-    ImGui::SetNextWindowSize(ImVec2(std::min(480.0f, ds.x - 40), 0), ImGuiCond_Always);
-    if (ImGui::BeginPopupModal("Create a shortcut", nullptr,
-                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoSavedSettings)) {
-        ImGui::Dummy(ImVec2(0, 2));
-        theme::centered_text("Create a shortcut", theme::font_button(), c.pink);
-        ImGui::Dummy(ImVec2(0, 2));
-        ImGui::PushTextWrapPos(0);
-        ImGui::TextColored(c.text_dim, "A shortcut starts the game directly, skipping this menu.");
-        ImGui::PopTextWrapPos();
-        ImGui::Dummy(ImVec2(0, 4));
-        draw_shortcut_controls(true);
-        ImGui::Dummy(ImVec2(0, 4));
-        if (theme::big_button("Done", ImVec2(ImGui::GetContentRegionAvail().x, 46), false)) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-    }
     end_card();
 }
 
@@ -1282,10 +1257,10 @@ void App::draw_game_tab(Config& config) {
 
     ImGui::SeparatorText("Shortcut");
     ImGui::TextWrapped("A shortcut starts the game directly, skipping the launcher.");
-    draw_shortcut_controls(false);
+    draw_shortcut_controls();
 }
 
-void App::draw_shortcut_controls(bool big) {
+void App::draw_shortcut_controls() {
     const auto& c = theme::palette();
 #if defined(__APPLE__)
     const char* apps_name = "Applications";
@@ -1307,18 +1282,13 @@ void App::draw_shortcut_controls(bool big) {
         ShortcutState st = shortcut_state(place);
         std::string label = (st == ShortcutState::Ours ? "Update " : "Add to ") + where;
         if (st == ShortcutState::Ours) label = "Update " + where + " shortcut";
-        // In the popup the buttons fill the row; Remove sits at the end of it.
-        const float row = ImGui::GetContentRegionAvail().x, remove_w = 110.0f;
-        const float main_w = st == ShortcutState::Ours ? row - remove_w - ImGui::GetStyle().ItemSpacing.x : row;
-        bool pressed = big ? theme::big_button(label.c_str(), ImVec2(main_w, 46)) : ImGui::Button(label.c_str());
-        if (pressed) {
+        if (ImGui::Button(label.c_str())) {
             pending_shortcut_place_ = place;
             report(create_shortcut(place));
         }
         if (st == ShortcutState::Ours) {
             ImGui::SameLine();
-            bool remove = big ? theme::big_button("Remove", ImVec2(remove_w, 46), false) : ImGui::Button("Remove shortcut");
-            if (remove) report(remove_shortcut(place));
+            if (ImGui::Button("Remove shortcut")) report(remove_shortcut(place));
         }
         ImGui::PopID();
     }
