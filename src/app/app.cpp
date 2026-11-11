@@ -1012,7 +1012,7 @@ void App::draw_states_tab() {
         if (theme::button("Load", ImVec2(bw, bh), theme::ButtonKind::Primary)) {
             slot_ = slot;
             config_.set_int("states.current_slot", slot_);
-            load_slot(slot);
+            if (load_slot(slot)) set_menu_open(false);  // straight back into the game
         }
         ImGui::EndDisabled();
         ImGui::SameLine(0, bgap);
