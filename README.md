@@ -27,12 +27,6 @@
 
 Get the latest version from the [Releases page](https://github.com/sweatyeggs69/KNID/releases/latest).
 
-### Works with RecompLauncher
-
-KNID works with [RecompLauncher](https://recomplauncher.com), which installs and updates it from
-these releases. Pick your ROM there and it is checked against the verified USA dump, set as KNID's
-game, and started with Play. The display settings show on the game's page too.
-
 [![Verified developer on RecompStore](https://recompstore.com/assets/press/verified-dark.svg)](https://recompstore.com/dev/sweatyeggs69)
 
 ## Getting started
