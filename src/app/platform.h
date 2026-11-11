@@ -36,11 +36,13 @@ struct ShortcutResult {
     std::string message;
     std::filesystem::path path;
 };
-// One fixed shortcut per place:
-//   macOS:   "<~/Applications | ~/Desktop>/Kirby Nightmare in Dream Land.app" (tiny bundle, marked
-//            with CFBundleIdentifier tech.mcclain.knid.shortcut, running this app with --play)
+// One fixed shortcut per place, named and drawn like the app (KNID, with its icon):
+//   macOS:   "<~/Applications | ~/Desktop>/KNID.app" (tiny bundle, marked with
+//            CFBundleIdentifier tech.mcclain.knid.shortcut, running this app with --play)
 //   Linux:   knid-play.desktop in ~/.local/share/applications or ~/Desktop
-//   Windows: not yet implemented (will be a fixed-name .lnk)
+//   Windows: "KNID.lnk" on the Desktop or in the Start menu Programs folder
+// Older builds named the macOS/Windows shortcut "Kirby Nightmare in Dream Land"; such a shortcut
+// counts as ours and is moved to the Trash when the new one is created or removed.
 std::filesystem::path shortcut_path(ShortcutPlace place);
 ShortcutState shortcut_state(ShortcutPlace place);
 // Creates the shortcut, or updates ours in place to point at the running app. If a same-named
