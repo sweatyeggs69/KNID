@@ -12,4 +12,5 @@ Settings and saves are kept in:
 
 KNID does not include any game, BIOS, artwork, fonts or music from Nintendo or HAL Laboratory.
 Kirby is a trademark of Nintendo / HAL Laboratory. This is an unofficial project.
-The Fredoka font is licensed under the SIL Open Font License 1.1 (see Contents/Resources/licenses).
+The DM Sans font is licensed under the SIL Open Font License 1.1 and the Lucide icons
+under the ISC License (see Contents/Resources/licenses).

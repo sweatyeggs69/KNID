@@ -1,6 +1,7 @@
 #include "options/options_panel.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>  // GImGui, SetFocusID for the sidebar entries
 
 #include <algorithm>
 #include <cfloat>
@@ -11,6 +12,7 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/theme.h"
 #include "options/display.h"
 #include "options/input.h"
 
@@ -46,6 +48,20 @@ struct PanelState {
     std::function<void()> on_quit;
     ImFont* heading_font = nullptr;
     ImFont* small_font = nullptr;
+    ImTextureID logo = 0;
+    ImVec2 logo_size{0, 0};
+    // Controller / keyboard focus hops between the sidebar and the page (see draw_options_menu).
+    struct NavEntry {
+        ImGuiID id;
+        std::string page;  // empty for Resume / Settings / Quit
+    };
+    std::vector<NavEntry> sidebar;     // last frame's sidebar entries, top to bottom
+    std::vector<NavEntry> sidebar_next;
+    ImGuiID focus_target = 0;          // give this sidebar entry the focus when it is drawn
+    ImGuiID cell_focused = 0;          // binding cell focused last frame (Backspace clears it)
+    bool focus_page = false;           // put focus on the page's first control next frame
+    ImGuiID left_from = 0;             // Left was pressed on this page control...
+    int left_wait = 0;                 // ...and is checked again after this many frames
 };
 PanelState& state() {
     static PanelState s;
@@ -114,7 +130,7 @@ void display_tab(Config& config) {
     Settings s = load([&](const std::string& k, const std::string& d) { return config.get(k, d); });
     bool changed = false;
 
-    ImGui::SeparatorText("Size and shape");
+    theme::section("Size and shape");
     int scale = static_cast<int>(s.scale);
     changed |= ImGui::RadioButton("Pixel perfect (integer scaling)", &scale, int(ScaleMode::Integer));
     help_marker("Every GBA pixel becomes an exact block of screen pixels, so nothing shimmers or "
@@ -148,15 +164,15 @@ void display_tab(Config& config) {
     }
 
     bool fullscreen = config.get("display.fullscreen", "0") == "1";
-    if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
+    if (theme::toggle("Fullscreen", &fullscreen)) {
         config.set("display.fullscreen", fullscreen ? "1" : "0");
         if (SDL_Window* w = SDL_GetKeyboardFocus()) SDL_SetWindowFullscreen(w, fullscreen);
     }
     help_marker("F11 also switches fullscreen.");
 
-    ImGui::SeparatorText("Look");
+    theme::section("Look");
     bool gba_colors = s.color == ColorMode::GbaLcd;
-    if (ImGui::Checkbox("Original GBA screen colors", &gba_colors)) {
+    if (theme::toggle("Original GBA screen colors", &gba_colors)) {
         s.color = gba_colors ? ColorMode::GbaLcd : ColorMode::Raw;
         changed = true;
     }
@@ -197,21 +213,66 @@ void display_tab(Config& config) {
 
 }
 
+// Key bindings tables: a name column, then one column per device, each cell a field that
+// rebinds when activated (Enter, controller A or a click) and clears on Delete, controller X or
+// a right click.
+using input::Source;
+enum class CellAction { None, Rebind, Clear };
+
+std::string remap_prompt_for(Source src) {
+    (void)src;
+    return "Press any key...";
+}
+
+bool begin_bindings_table(const char* id, const char* first, float first_width) {
+    if (!ImGui::BeginTable(id, 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchSame |
+                                      ImGuiTableFlags_PadOuterX))
+        return false;
+    ImGui::TableSetupColumn(first, ImGuiTableColumnFlags_WidthFixed, std::max(first_width, 110.0f));
+    ImGui::TableSetupColumn("Keyboard");
+    ImGui::TableSetupColumn("Controller");
+    // Plain text headers: TableHeadersRow makes them focusable, which gets in the way of
+    // keyboard and controller navigation.
+    ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::palette().ink_muted);
+    for (int i = 0; i < 3; ++i) {
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(ImGui::TableGetColumnName(i));
+    }
+    ImGui::PopStyleColor();
+    return true;
+}
+
+CellAction binding_cell(input::Manager& in, Source src, bool waiting, const std::string& text) {
+    ImGui::PushID(int(src));
+    ImGui::BeginDisabled(in.remapping() && !waiting);
+    CellAction act = CellAction::None;
+    if (theme::binding_cell("##cell", text.c_str(), waiting) && !in.remapping()) act = CellAction::Rebind;
+    if (ImGui::IsItemFocused()) state().cell_focused = ImGui::GetItemID();
+    if (!in.remapping() && act == CellAction::None) {
+        // Backspace is the Mac delete key, so it clears here instead of going back to the sidebar.
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right) ||
+            (ImGui::IsItemFocused() && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
+                                        ImGui::IsKeyPressed(ImGuiKey_Backspace, false) ||
+                                        ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false))))
+            act = CellAction::Clear;
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+    return act;
+}
+
 void controls_tab(input::Manager& in, Config& config) {
     const Button waiting = in.remap_target();
+    theme::section("Buttons");
 
-    ImGui::TextWrapped("Click a button to rebind it, then press a key, controller button or "
-                       "stick direction. A keyboard key replaces the keyboard binding and a "
-                       "controller input replaces the controller binding, so both keep working.");
+    ImGui::TextWrapped("Select a binding and press Enter, A or click it, then press the new key "
+                       "or controller button. Keyboard and controller bindings are kept apart, so "
+                       "both keep working. Delete (Backspace) or X on a controller clears one.");
     ImGui::Text("Controllers connected: %d", in.gamepad_count());
     ImGui::Spacing();
 
-    if (ImGui::BeginTable("bindings", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
-                                             ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("GBA button", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Bound to");
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableHeadersRow();
+    if (begin_bindings_table("bindings", "GBA button", ImGui::CalcTextSize("GBA button").x)) {
         static constexpr Button kOrder[] = {Button::Up, Button::Down, Button::Left, Button::Right,
                                             Button::A,  Button::B,    Button::L,    Button::R,
                                             Button::Start, Button::Select};
@@ -221,24 +282,26 @@ void controls_tab(input::Manager& in, Config& config) {
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(input::name(b));
-            ImGui::TableNextColumn();
-            if (waiting == b) ImGui::TextUnformatted("Press a key or button...  (Esc to keep)");
-            else ImGui::TextWrapped("%s", in.describe(b).c_str());
-            ImGui::TableNextColumn();
-            ImGui::BeginDisabled(in.remapping());
-            if (ImGui::SmallButton("Rebind")) in.start_remap(b);
-            ImGui::EndDisabled();
+            for (Source src : {Source::Keyboard, Source::Controller}) {
+                ImGui::TableNextColumn();
+                const bool wait = waiting == b && in.remap_source() == src;
+                switch (binding_cell(in, src, wait, wait ? remap_prompt_for(src) : in.describe(b, src))) {
+                    case CellAction::Rebind: in.start_remap(b, src); break;
+                    case CellAction::Clear: in.clear(b, src); break;
+                    default: break;
+                }
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
     }
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Turbo");
+    theme::section("Turbo");
     {
         const input::TurboSettings& t = in.config().turbo;
         bool on = config.get_bool("input.turbo", t.enabled);
-        if (ImGui::Checkbox("Turbo buttons", &on)) {
+        if (theme::toggle("Turbo buttons", &on)) {
             config.set_bool("input.turbo", on);
             in.reload();
         }
@@ -264,7 +327,7 @@ void controls_tab(input::Manager& in, Config& config) {
             ImGui::PushID(200 + int(b));
             const std::uint16_t bit = std::uint16_t(1u << int(b));
             bool sel = (mask & bit) != 0;
-            if (ImGui::Checkbox(input::name(b), &sel)) {
+            if (theme::checkbox(input::name(b), &sel)) {
                 mask = sel ? std::uint16_t(mask | bit) : std::uint16_t(mask & ~bit);
                 mask_changed = true;
             }
@@ -278,16 +341,11 @@ void controls_tab(input::Manager& in, Config& config) {
     }
 
     ImGui::Spacing();
-    ImGui::SeparatorText("Shortcuts");
+    theme::section("Shortcuts");
     ImGui::TextWrapped("For a controller shortcut, hold the buttons together (up to two) and "
                        "let go. F1, F11 and Esc are kept for the menu and fullscreen.");
     const input::Hotkey hk_waiting = in.hotkey_remap_target();
-    if (ImGui::BeginTable("shortcuts", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
-                                              ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Bound to");
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableHeadersRow();
+    if (begin_bindings_table("shortcuts", "Action", ImGui::CalcTextSize(input::name(input::Hotkey::SaveNewSlot)).x)) {
         for (int i = 0; i < input::kHotkeyCount; ++i) {
             const auto h = input::Hotkey(i);
             ImGui::PushID(100 + i);
@@ -295,15 +353,16 @@ void controls_tab(input::Manager& in, Config& config) {
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(input::name(h));
-            ImGui::TableNextColumn();
-            if (hk_waiting == h) ImGui::TextUnformatted("Press a key or buttons...  (Esc to keep)");
-            else ImGui::TextWrapped("%s", in.describe(h).c_str());
-            ImGui::TableNextColumn();
-            ImGui::BeginDisabled(in.remapping());
-            if (ImGui::SmallButton("Rebind")) in.start_remap(h);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Clear")) in.clear(h);
-            ImGui::EndDisabled();
+            for (Source src : {Source::Keyboard, Source::Controller}) {
+                ImGui::TableNextColumn();
+                const bool wait = hk_waiting == h && in.remap_source() == src;
+                const std::string prompt = remap_prompt_for(src);
+                switch (binding_cell(in, src, wait, wait ? prompt : in.describe(h, src))) {
+                    case CellAction::Rebind: in.start_remap(h, src); break;
+                    case CellAction::Clear: in.clear(h, src); break;
+                    default: break;
+                }
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -331,43 +390,78 @@ void controls_tab(input::Manager& in, Config& config) {
 }  // namespace
 
 namespace {
-// One sidebar entry: a full-width rounded pill. The selected page is pink with dark text.
-bool nav_item(const char* label, bool selected, float height) {
-    const ImGuiStyle& style = ImGui::GetStyle();
+bool any_pressed(std::initializer_list<ImGuiKey> keys) {
+    for (ImGuiKey k : keys)
+        if (ImGui::IsKeyPressed(k)) return true;
+    return false;
+}
+
+// One sidebar entry, after Bookie's sidebar: a rounded row that fills on hover. The selected page
+// gets the raised surface. icon is optional.
+bool nav_item(const char* label, bool selected, float height, const char* icon = nullptr, bool sub = false,
+              const std::string& page = {}) {
+    const auto& c = theme::palette();
+    auto& st = state();
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     const ImVec2 size(ImGui::GetContentRegionAvail().x, height);
-    const bool pressed = ImGui::InvisibleButton(label, size);
+    const bool pressed = theme::nav_button(label, size);
     const bool hovered = ImGui::IsItemHovered();
-    const bool held = ImGui::IsItemActive();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + size.x, pos.y + size.y);
-    const float rounding = style.FrameRounding;
-    if (selected) {
-        dl->AddRectFilled(pos, end, ImGui::GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_Button), rounding);
-    } else if (hovered || held) {
-        dl->AddRectFilled(pos, end, ImGui::GetColorU32(ImGuiCol_FrameBgHovered), rounding);
+    if (selected || hovered) dl->AddRectFilled(pos, end, theme::u32(selected ? c.raised : c.high, selected ? 1.0f : 0.6f), 8.0f);
+    // Keyboard / controller focus: the same ring as every other control.
+    st.sidebar_next.push_back({ImGui::GetItemID(), page});
+    if (st.focus_target == ImGui::GetItemID()) {  // moved here by update_focus_hops
+        ImGui::SetFocusID(ImGui::GetItemID(), ImGui::GetCurrentWindow());
+        ImGui::SetNavCursorVisible(true);
+        st.focus_target = 0;
     }
-    // Dark text on the pink pill, the theme's normal text elsewhere.
-    const ImU32 text = selected ? IM_COL32(58, 20, 46, 255) : ImGui::GetColorU32(ImGuiCol_Text);
+
+    if (ImGui::GetItemID() == GImGui->NavId && GImGui->NavCursorVisible)
+        dl->AddRect(ImVec2(pos.x - 1, pos.y - 1), ImVec2(end.x + 1, end.y + 1), theme::u32(c.highlight), 9.0f, 0, 2.0f);
+    const ImVec4 text = selected || hovered ? c.ink : sub ? c.ink_muted : ImVec4(c.ink.x, c.ink.y, c.ink.z, 0.85f);
+    float x = pos.x + 12.0f;
+    if (icon) {
+        const ImVec2 is = ImGui::CalcTextSize(icon);
+        dl->AddText(ImVec2(x, pos.y + (size.y - is.y) * 0.5f), theme::u32(text), icon);
+        x += is.x + 9.0f;
+    }
+    ImGui::PushFont(theme::font_button());
     const ImVec2 ts = ImGui::CalcTextSize(label);
-    dl->AddText(ImVec2(pos.x + style.FramePadding.x + 2.0f, pos.y + (size.y - ts.y) * 0.5f), text, label);
+    dl->AddText(ImVec2(x, pos.y + (size.y - ts.y) * 0.5f), theme::u32(text), label);
+    ImGui::PopFont();
     return pressed;
 }
 
 struct Page {
     std::string name;
+    std::string description;
     std::function<void()> draw;
 };
+
+// The line under each page title.
+const char* default_description(const std::string& name) {
+    if (name == "Game") return "Your game file, how it starts, and shortcuts.";
+    if (name == "Display") return "How the game is drawn on your screen.";
+    if (name == "Controls") return "Keyboard and controller buttons, turbo and shortcuts.";
+    if (name == "States") return "Save states: save and load anywhere.";
+    if (name == "Cheats/Mods" || name == "Cheats") return "Optional changes to the game.";
+    if (name == "Achievements") return "RetroAchievements sign-in and progress.";
+    if (name == "Updates") return "Your version and new releases.";
+    if (name == "About") return "Version, credits and licenses.";
+    return "";
+}
 
 std::vector<Page> collect_pages(PanelState& st, knid::Config& config) {
     std::vector<Page> pages;
     auto extras = [&](bool before) {
         for (auto& t : st.extra_tabs)
-            if (t.before_builtin == before) pages.push_back({t.name, [&t, &config] { if (t.draw) t.draw(config); }});
+            if (t.before_builtin == before)
+                pages.push_back({t.name, default_description(t.name), [&t, &config] { if (t.draw) t.draw(config); }});
     };
     extras(true);
-    pages.push_back({"Display", [&config] { display_tab(config); }});
-    pages.push_back({"Controls", [&st, &config] { controls_tab(*st.input, config); }});
+    pages.push_back({"Display", default_description("Display"), [&config] { display_tab(config); }});
+    pages.push_back({"Controls", default_description("Controls"), [&st, &config] { controls_tab(*st.input, config); }});
     extras(false);
     return pages;
 }
@@ -380,40 +474,48 @@ void ensure_input(PanelState& st, knid::Config& config) {
     }
 }
 
-// Draws the selected page in a padded, scrollable pane that fills the rest of the window.
+// Draws the selected page: a large title, a muted description, then the page's sections (cards)
+// in a scrollable body.
 void draw_page(PanelState& st, const Page& page) {
-    const ImGuiStyle& style = ImGui::GetStyle();
-    // Outer pane: rounded background with even padding on every side.
-    // The pane and its body split the side padding (16 + 10 = 26) so the body's scrollbar sits
-    // 16 from the edge with a 10 gap before the content.
-    constexpr float kPaneX = 16.0f, kBodyX = 10.0f;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPaneX, 20.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 18.0f);
-    const bool pane = ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
+    const auto& c = theme::palette();
+    constexpr float kPadX = 32.0f, kPadTop = 26.0f;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    const bool pane = ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_NavFlattened,
                                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar();
     if (pane) {
-        if (st.heading_font) ImGui::PushFont(st.heading_font);
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + kBodyX);
-        ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_Button), "%s", page.name.c_str());
-        if (st.heading_font) ImGui::PopFont();
-        ImGui::Dummy(ImVec2(0, style.ItemSpacing.y * 0.25f));
-        // Inner body scrolls under the fixed heading. Its padding is small, so headers and
-        // separators stay inside the pane's padding instead of reaching into it.
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kBodyX, 0.0f));
-        const bool body = ImGui::BeginChild("body", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding);
-        ImGui::PopStyleVar();
+        ImGui::SetCursorPos(ImVec2(kPadX, kPadTop));
+        ImGui::PushFont(theme::font_title());
+        ImGui::TextUnformatted((page.name + " Settings").c_str());
+        ImGui::PopFont();
+        if (!page.description.empty()) {
+            ImGui::SetCursorPosX(kPadX);
+            ImGui::TextColored(c.ink_muted, "%s", page.description.c_str());
+        }
+        ImGui::Dummy(ImVec2(0, 6.0f));
+        // The body scrolls under the fixed title; its scrollbar sits near the panel edge.
+        ImGui::SetCursorPosX(kPadX);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 8.0f);
+        // NavFlattened (here, on the page and the sidebar): the d-pad moves straight from the
+        // sidebar into the settings without having to "enter" each panel first.
+        const bool body = ImGui::BeginChild("body", ImVec2(-14.0f, -16.0f), ImGuiChildFlags_NavFlattened);
+        ImGui::PopStyleVar(2);
         if (body) {
-            // Inputs take about half the pane so their labels stay readable beside them.
+            // Text outside a section wraps where the cards end.
             ImGui::PushItemWidth(std::min(ImGui::GetContentRegionAvail().x * 0.5f, ImGui::GetFontSize() * 14.0f));
-            ImGui::PushTextWrapPos(0.0f);  // long lines wrap inside the pane instead of running off
+            ImGui::PushTextWrapPos(0.0f);
+            if (st.focus_page) {
+                ImGui::SetKeyboardFocusHere();  // the first control on the page
+                st.focus_page = false;
+            }
             page.draw();
+            theme::end_section();
             ImGui::PopTextWrapPos();
             ImGui::PopItemWidth();
+            ImGui::Dummy(ImVec2(0, 8.0f));
         }
         ImGui::EndChild();
-        ImGui::PopStyleColor();
     }
     ImGui::EndChild();
 }
@@ -471,9 +573,63 @@ void set_options_menu_fonts(ImFont* heading, ImFont* small) {
     state().small_font = small;
 }
 
+namespace {
+// Controller and keyboard focus for the menu. ImGui's directional navigation does not reach the
+// sidebar entries from the page's cards, so the sidebar is driven here, before anything is drawn:
+//   sidebar: Up / Down move between entries, Right opens the focused page and moves into it,
+//            B closes the menu (like Resume).
+//   page:    B goes back to the sidebar, and so does Left when nothing on the page is to the left.
+void update_focus_hops(PanelState& st, bool& open) {
+    ImGuiContext& g = *GImGui;
+    if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) || (st.input && st.input->remapping()) || g.ActiveId ||
+        g.NavId == 0) {
+        st.left_wait = 0;
+        return;
+    }
+    auto it = std::find_if(st.sidebar.begin(), st.sidebar.end(), [&](const PanelState::NavEntry& e) { return e.id == g.NavId; });
+    const bool on_cell = st.cell_focused != 0 && st.cell_focused == g.NavId;
+    st.cell_focused = 0;
+    const bool back = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight) || (!on_cell && ImGui::IsKeyPressed(ImGuiKey_Backspace));
+    const bool up = any_pressed({ImGuiKey_UpArrow, ImGuiKey_GamepadDpadUp, ImGuiKey_GamepadLStickUp});
+    const bool down = any_pressed({ImGuiKey_DownArrow, ImGuiKey_GamepadDpadDown, ImGuiKey_GamepadLStickDown});
+    const bool left = any_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadLStickLeft});
+    const bool right = any_pressed({ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight, ImGuiKey_GamepadLStickRight});
+    if (it != st.sidebar.end()) {
+        if (up || down || left || right) ImGui::NavMoveRequestCancel();  // handled here instead
+        if (up && it != st.sidebar.begin()) st.focus_target = std::prev(it)->id;
+        if (down && std::next(it) != st.sidebar.end()) st.focus_target = std::next(it)->id;
+        if (right) {
+            if (!it->page.empty()) st.current_tab = it->page;
+            st.focus_page = true;
+        }
+        if (back) open = false;
+        return;
+    }
+    auto selected = [&]() -> ImGuiID {
+        for (const auto& e : st.sidebar)
+            if (!e.page.empty() && e.page == st.current_tab) return e.id;
+        return st.sidebar.empty() ? 0 : st.sidebar.front().id;
+    };
+    if (back) {
+        st.focus_target = selected();
+    } else if (left) {
+        st.left_from = g.NavId;
+        st.left_wait = 3;  // a directional move inside the page lands within a frame or two
+    } else if (st.left_wait > 0 && --st.left_wait == 0 && g.NavId == st.left_from) {
+        st.focus_target = selected();
+    }
+}
+}  // namespace
+
+void set_options_menu_logo(ImTextureID tex, ImVec2 size) {
+    state().logo = tex;
+    state().logo_size = size;
+}
+
 void draw_options_menu(knid::Config& config) {
     auto& st = state();
     if (!st.menu_open) return;
+    const auto& c = theme::palette();
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     // Dim the paused game behind the menu with the theme's modal dim color (set in theme.cpp).
@@ -481,7 +637,7 @@ void draw_options_menu(knid::Config& config) {
                                                   ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
     // A fixed 3:2 panel in window points. It never grows past kMaxWidth, so it stays the same
     // size in fullscreen and on HiDPI screens, and shrinks (keeping 3:2) in small windows.
-    constexpr float kMaxWidth = 900.0f, kMargin = 24.0f;
+    constexpr float kMaxWidth = 960.0f, kMargin = 24.0f;
     float w = std::min(vp->Size.x - 2 * kMargin, kMaxWidth);
     float h = w / 1.5f;
     if (h > vp->Size.y - 2 * kMargin) {
@@ -492,10 +648,8 @@ void draw_options_menu(knid::Config& config) {
                             ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
     bool open = true;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 16.0f));
-    ImVec4 bg = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
-    bg.w = 1.0f;  // opaque, so nothing on the paused game shows through the text
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, bg);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, c.surface);
     const bool shown = ImGui::Begin("Settings", nullptr,
                                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
@@ -511,62 +665,85 @@ void draw_options_menu(knid::Config& config) {
         }
         if (st.current_tab.empty() && !pages.empty()) st.current_tab = pages.front().name;
 
-        // Sidebar: title, one entry per page, then Resume / Quit pinned to the bottom.
-        const float nav_w = std::max(ImGui::GetFontSize() * 8.5f, w * 0.22f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 14.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 4.0f));
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-        if (ImGui::BeginChild("nav", ImVec2(nav_w, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
-                              ImGuiWindowFlags_NoScrollbar)) {
-            if (st.heading_font) ImGui::PushFont(st.heading_font);
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetStyle().FramePadding.x + 2.0f);
-            ImGui::TextUnformatted("Settings");
-            if (st.heading_font) ImGui::PopFont();
-            ImGui::Dummy(ImVec2(0, 6.0f));
+        update_focus_hops(st, open);
+        st.sidebar_next.clear();
+        // Sidebar, after Bookie's: the game's logo, Resume, a Settings group with every page
+        // indented behind a thin rule, Quit, and the close hint at the bottom.
+        const float nav_w = std::max(ImGui::GetFontSize() * 11.0f, w * 0.24f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 2.0f));
+        if (ImGui::BeginChild("nav", ImVec2(nav_w, 0), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened,
+                              ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const ImVec2 wp = ImGui::GetWindowPos();
+            const float wh = ImGui::GetWindowHeight();
+            dl->AddLine(ImVec2(wp.x + nav_w - 1.0f, wp.y), ImVec2(wp.x + nav_w - 1.0f, wp.y + wh), theme::u32(c.line));
 
-            // Bottom block: buttons and the close hint. In short windows the hint goes first,
-            // then the entries get shorter, so every page and both buttons stay visible.
-            const ImGuiStyle& style = ImGui::GetStyle();
-            const float btn_h = ImGui::GetFrameHeight();
-            const int buttons = st.on_quit ? 2 : 1;
-            const float hint_h = ImGui::GetTextLineHeight() * 1.5f;
-            const float bottom = ImGui::GetWindowHeight() - style.WindowPadding.y;
-            const float n = float(pages.size());
-            float block = (btn_h + style.ItemSpacing.y) * float(buttons);
-            float room = bottom - ImGui::GetCursorPosY() - block - style.ItemSpacing.y * 2.0f;
-            const bool show_hint = room - hint_h >= n * (btn_h + style.ItemSpacing.y);
-            if (show_hint) {
-                block += hint_h;
-                room -= hint_h;
-            }
-            const float item_h = std::clamp(room / n - style.ItemSpacing.y, ImGui::GetTextLineHeight() + 4.0f, btn_h);
-            for (const Page& p : pages) {
-                if (nav_item(p.name.c_str(), p.name == st.current_tab, item_h)) st.current_tab = p.name;
-            }
-            const float y = bottom - block;
-            if (y > ImGui::GetCursorPosY()) ImGui::SetCursorPosY(y);
-            if (ImGui::Button("Resume", ImVec2(-FLT_MIN, 0))) open = false;
-            if (st.on_quit) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
-                if (ImGui::Button("Quit to launcher", ImVec2(-FLT_MIN, 0))) {
-                    open = false;
-                    st.on_quit();
+            // Logo, left aligned, in a fixed 64 px header like Bookie's brand row.
+            constexpr float kHeader = 64.0f, kLogoH = 26.0f;
+            if (st.logo && st.logo_size.y > 0) {
+                float lh = kLogoH, lw = lh * st.logo_size.x / st.logo_size.y;
+                const float max_w = nav_w - 2 * 14.0f - 12.0f;
+                if (lw > max_w) {
+                    lw = max_w;
+                    lh = lw * st.logo_size.y / st.logo_size.x;
                 }
-                ImGui::PopStyleColor(3);
+                ImGui::SetCursorPos(ImVec2(14.0f + 12.0f, (kHeader - lh) * 0.5f + 4.0f));
+                ImGui::Image(st.logo, ImVec2(lw, lh));
+            }
+            ImGui::SetCursorPosY(kHeader + 6.0f);
+
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const float line = ImGui::GetTextLineHeight();
+            const float hint_h = line * 1.6f;
+            const float n = float(pages.size());
+            const int top_items = 2 + (st.on_quit ? 1 : 0);  // Resume, Settings, Quit
+            const float gaps = 12.0f * 3.0f;
+            float room = wh - ImGui::GetCursorPosY() - gaps - 12.0f;
+            const bool show_hint = room - hint_h >= (n + float(top_items)) * (line + 14.0f);
+            if (show_hint) room -= hint_h;
+            const float item_h = std::clamp(room / (n + float(top_items)) - style.ItemSpacing.y, line + 4.0f, 34.0f);
+            const float sub_h = std::min(item_h, 30.0f);
+
+            // In game the top entry resumes play; opened from the launcher it just closes the menu.
+            if (st.on_quit ? nav_item("Resume game", false, item_h, KNID_ICON_PLAY)
+                           : nav_item("Close", false, item_h, KNID_ICON_X))
+                open = false;
+            if (ImGui::IsWindowAppearing()) ImGui::SetItemDefaultFocus();
+            ImGui::Dummy(ImVec2(0, 8.0f));
+            if (nav_item("Settings", false, item_h, KNID_ICON_SETTINGS) && !pages.empty())
+                st.current_tab = pages.front().name;
+            // Pages, indented behind a vertical rule under the Settings icon.
+            const float rule_x = 12.0f + ImGui::CalcTextSize(KNID_ICON_SETTINGS).x * 0.5f;
+            const float indent = rule_x + 10.0f;
+            ImGui::Dummy(ImVec2(0, 2.0f));
+            const ImVec2 rule_top = ImGui::GetCursorScreenPos();
+            ImGui::Indent(indent);
+            for (const Page& p : pages) {
+                if (nav_item(p.name.c_str(), p.name == st.current_tab, sub_h, nullptr, true, p.name)) st.current_tab = p.name;
+            }
+            ImGui::Unindent(indent);
+            const float rule_bottom = ImGui::GetCursorScreenPos().y - style.ItemSpacing.y;
+            dl->AddRectFilled(ImVec2(rule_top.x + rule_x - 1.0f, rule_top.y), ImVec2(rule_top.x + rule_x + 1.0f, rule_bottom),
+                              theme::u32(c.line), 1.0f);
+            ImGui::Dummy(ImVec2(0, 8.0f));
+            if (st.on_quit && nav_item("Quit to launcher", false, item_h, KNID_ICON_LOG_OUT)) {
+                open = false;
+                st.on_quit();
             }
             if (show_hint) {
+                ImGui::SetCursorPosY(wh - hint_h);
+                ImGui::SetCursorPosX(14.0f + 12.0f);
                 if (st.small_font) ImGui::PushFont(st.small_font);
-                ImGui::TextDisabled("F1 or Esc closes this menu");
+                ImGui::TextColored(c.ink_faint, "F1 or Esc closes this menu");
                 if (st.small_font) ImGui::PopFont();
             }
         }
         ImGui::EndChild();
-        ImGui::PopStyleColor();
         ImGui::PopStyleVar(2);
+        st.sidebar.swap(st.sidebar_next);
 
-        ImGui::SameLine(0.0f, 8.0f);
+        ImGui::SameLine(0.0f, 0.0f);
         draw_options_panel(config);
     }
     ImGui::End();

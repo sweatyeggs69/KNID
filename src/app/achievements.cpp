@@ -1,5 +1,6 @@
 #include "app/achievements.h"
 
+#include <vector>
 #include <imgui.h>
 #include <rc_client.h>
 #include <rc_consoles.h>
@@ -509,19 +510,19 @@ void Achievements::Impl::draw_sign_in() {
     ImGui::SameLine();
     if (ImGui::Button("Create an account")) SDL_OpenURL("https://retroachievements.org/createaccount.php");
     ImGui::PushFont(theme::font_small());
-    ImGui::TextColored(c.text_dim, "Your password goes only to retroachievements.org and is never saved. KNID keeps");
-    ImGui::TextColored(c.text_dim, "just the sign-in token, in %s.", credentials::location());
+    ImGui::TextColored(c.ink_muted, "Your password goes only to retroachievements.org and is never saved. KNID keeps");
+    ImGui::TextColored(c.ink_muted, "just the sign-in token, in %s.", credentials::location());
     ImGui::PopFont();
 }
 
 void Achievements::Impl::draw_game() {
     const auto& c = theme::palette();
     if (game_hash.empty()) {
-        ImGui::TextColored(c.text_dim, "Start the game to see its achievements.");
+        ImGui::TextColored(c.ink_muted, "Start the game to see its achievements.");
         return;
     }
     if (!game_message.empty()) {
-        ImGui::TextColored(game_message_error ? c.bad : c.text_dim, "%s", game_message.c_str());
+        ImGui::TextColored(game_message_error ? c.bad : c.ink_muted, "%s", game_message.c_str());
         if (game_message_error && !game_requested && login == Login::SignedIn && ImGui::Button("Try again"))
             maybe_load_game();
     }
@@ -531,9 +532,9 @@ void Achievements::Impl::draw_game() {
     rc_client_user_game_summary_t sum{};
     rc_client_get_user_game_summary(client, &sum);
     if (sum.num_core_achievements == 0)
-        ImGui::TextColored(c.text_dim, "%s has no achievements yet.", g && g->title ? g->title : "This game");
+        ImGui::TextColored(c.ink_muted, "%s has no achievements yet.", g && g->title ? g->title : "This game");
     else
-        ImGui::TextColored(c.text_dim, "%s: %u of %u unlocked, %u of %u points", g && g->title ? g->title : "Game",
+        ImGui::TextColored(c.ink_muted, "%s: %u of %u unlocked, %u of %u points", g && g->title ? g->title : "Game",
                            sum.num_unlocked_achievements, sum.num_core_achievements, sum.points_unlocked,
                            sum.points_core);
 
@@ -544,7 +545,15 @@ void Achievements::Impl::draw_game() {
     if (!list) return;
     if (ImGui::BeginChild("##ra_list", ImVec2(0, 0), ImGuiChildFlags_None)) {
         bool first = true;
-        for (uint32_t bi = 0; bi < list->num_buckets; ++bi) {
+        // Unlocked achievements first (recently unlocked, then the rest), then rcheevos' order.
+        std::vector<uint32_t> order(list->num_buckets);
+        for (uint32_t bi = 0; bi < list->num_buckets; ++bi) order[bi] = bi;
+        auto rank = [&](uint32_t bi) {
+            const uint8_t t = list->buckets[bi].bucket_type;
+            return t == RC_CLIENT_ACHIEVEMENT_BUCKET_RECENTLY_UNLOCKED ? 0 : t == RC_CLIENT_ACHIEVEMENT_BUCKET_UNLOCKED ? 1 : 2;
+        };
+        std::stable_sort(order.begin(), order.end(), [&](uint32_t x, uint32_t y) { return rank(x) < rank(y); });
+        for (uint32_t bi : order) {
             const rc_client_achievement_bucket_t& bucket = list->buckets[bi];
             bool only_warning = bucket.num_achievements == 1 && bucket.achievements[0]->id == kWarningAchievementId;
             if (only_warning) continue;
@@ -563,17 +572,17 @@ void Achievements::Impl::draw_game() {
                 else ImGui::Dummy(ImVec2(44, 44));
                 ImGui::SameLine();
                 ImGui::BeginGroup();
-                ImGui::TextColored(unlocked ? c.yellow : c.text, "%s", a->title ? a->title : "");
+                ImGui::TextColored(unlocked ? c.highlight : c.ink, "%s", a->title ? a->title : "");
                 ImGui::SameLine();
-                ImGui::TextColored(c.text_dim, "%u pt%s", a->points, a->points == 1 ? "" : "s");
+                ImGui::TextColored(c.ink_muted, "%u pt%s", a->points, a->points == 1 ? "" : "s");
                 ImGui::PushFont(theme::font_small());
                 ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 8);
-                ImGui::TextColored(c.text_dim, "%s", a->description ? a->description : "");
+                ImGui::TextColored(c.ink_muted, "%s", a->description ? a->description : "");
                 ImGui::PopTextWrapPos();
                 if (!unlocked && a->measured_progress[0]) {
                     ImGui::ProgressBar(a->measured_percent / 100.0f, ImVec2(200, 6), "");
                     ImGui::SameLine();
-                    ImGui::TextColored(c.text_dim, "%s", a->measured_progress);
+                    ImGui::TextColored(c.ink_muted, "%s", a->measured_progress);
                 }
                 ImGui::PopFont();
                 ImGui::EndGroup();
@@ -593,7 +602,7 @@ void Achievements::Impl::draw_tab() {
         ImGui::Spacing();
     }
     bool on = enabled();
-    if (ImGui::Checkbox(login == Login::SignedIn && on ? "Achievements on" : "Earn achievements while playing", &on)) {
+    if (theme::toggle(login == Login::SignedIn && on ? "Achievements on" : "Earn achievements while playing", &on)) {
         config.set_bool("ra.enabled", on);
         if (on) {
             login_with_saved_token();
@@ -608,7 +617,7 @@ void Achievements::Impl::draw_tab() {
 
     if (login != Login::SignedIn) {
         if (!login_message.empty())
-            ImGui::TextColored(login_message_error ? c.bad : c.text_dim, "%s", login_message.c_str());
+            ImGui::TextColored(login_message_error ? c.bad : c.ink_muted, "%s", login_message.c_str());
         if (login == Login::SignedOut && !config.get_string("ra.user").empty() &&
             credentials::load(config.pref_dir(), config.get_string("ra.user"))) {
             ImGui::Text("Saved account: %s", config.get_string("ra.user").c_str());
@@ -639,13 +648,13 @@ void Achievements::Impl::draw_tab() {
         return;
     }
     const rc_client_user_t* u = rc_client_get_user_info(client);
-    ImGui::TextColored(c.text_dim, "Signed in as %s, %u points (%u softcore)",
+    ImGui::TextColored(c.ink_muted, "Signed in as %s, %u points (%u softcore)",
                        u && u->display_name ? u->display_name : "", u ? u->score : 0, u ? u->score_softcore : 0);
-    if (!login_message.empty()) ImGui::TextColored(login_message_error ? c.bad : c.text_dim, "%s", login_message.c_str());
+    if (!login_message.empty()) ImGui::TextColored(login_message_error ? c.bad : c.ink_muted, "%s", login_message.c_str());
 
     if (ImGui::BeginPopup("##ra_options")) {
         bool hc = config.get_bool("ra.hardcore", false);
-        if (ImGui::Checkbox("Hardcore mode", &hc)) {
+        if (theme::toggle("Hardcore mode", &hc)) {
             if (hc && rc_client_is_game_loaded(client)) {
                 confirm_hardcore = true;
                 ImGui::CloseCurrentPopup();
@@ -655,18 +664,18 @@ void Achievements::Impl::draw_tab() {
             }
         }
         ImGui::PushFont(theme::font_small());
-        ImGui::TextColored(c.text_dim, "Hardcore unlocks are worth more and are marked on your profile. Loading save");
-        ImGui::TextColored(c.text_dim, "states is turned off while it is on (your battery save still works).");
+        ImGui::TextColored(c.ink_muted, "Hardcore unlocks are worth more and are marked on your profile. Loading save");
+        ImGui::TextColored(c.ink_muted, "states is turned off while it is on (your battery save still works).");
         if (rc_client_get_achievement_info(client, kWarningAchievementId))
             ImGui::TextColored(c.bad, "RetroAchievements does not accept hardcore unlocks from KNID yet.");
         ImGui::PopFont();
         ImGui::Separator();
         bool v = config.get_bool("ra.notify_unlocks", true);
-        if (ImGui::Checkbox("Show a notification when an achievement unlocks", &v)) config.set_bool("ra.notify_unlocks", v);
+        if (theme::toggle("Show a notification when an achievement unlocks", &v)) config.set_bool("ra.notify_unlocks", v);
         v = config.get_bool("ra.notify_progress", true);
-        if (ImGui::Checkbox("Show progress updates", &v)) config.set_bool("ra.notify_progress", v);
+        if (theme::toggle("Show progress updates", &v)) config.set_bool("ra.notify_progress", v);
         v = config.get_bool("ra.notify_leaderboards", true);
-        if (ImGui::Checkbox("Show leaderboard notices", &v)) config.set_bool("ra.notify_leaderboards", v);
+        if (theme::toggle("Show leaderboard notices", &v)) config.set_bool("ra.notify_leaderboards", v);
         ImGui::EndPopup();
     }
     if (confirm_hardcore) {

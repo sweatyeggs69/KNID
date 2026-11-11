@@ -112,12 +112,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Fredoka font
+## DM Sans font
 
-The interface font (Fredoka Medium and SemiBold), embedded in the program.
-Copyright 2016 The Fredoka Project Authors (https://github.com/hafontia/Fredoka-One).
+The interface font (DM Sans Regular, SemiBold and Bold), embedded in the program.
+Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts).
 Licensed under the SIL Open Font License, Version 1.1. The full license text is in
-`assets/fonts/OFL.txt` in the source and in the `licenses` folder of each download.
+`assets/fonts/DMSans-OFL.txt` in the source and in the `licenses` folder of each download.
+
+## Lucide icons
+
+A few interface icons (play, settings, log out and similar), embedded in the program as a
+small font. https://lucide.dev. Licensed under the ISC License; the full text is in
+`assets/fonts/Lucide-LICENSE.txt` in the source and in the `licenses` folder of each download.
 
 ## zlib
 

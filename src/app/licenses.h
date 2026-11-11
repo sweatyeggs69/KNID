@@ -8,7 +8,7 @@ namespace knid::licenses {
 
 std::string_view knid();        // LICENSE (MIT)
 std::string_view notices();     // THIRD_PARTY_NOTICES.md
-std::string_view fredoka_ofl(); // SIL Open Font License for the Fredoka font
+std::string_view font_ofl();    // SIL Open Font License for the DM Sans font
 // All of the above, for --licenses.
 void print_all();
 

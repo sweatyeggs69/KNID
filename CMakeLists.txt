@@ -178,16 +178,19 @@ if(TARGET SDL3::SDL3)
     target_include_directories(knid_app PUBLIC src)
     target_link_libraries(knid_app PUBLIC SDL3::SDL3)
 
-    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. The Fredoka font
-    # (SIL OFL, assets/fonts) is compiled in.
+    # Launcher: first-run ROM setup, themed menu, shortcuts, game session. The DM Sans font
+    # (SIL OFL) and a few Lucide icons (ISC), both in assets/fonts, are compiled in.
     set(knid_font_cpp "")
-    foreach(weight Medium SemiBold)
-        set(out "${CMAKE_CURRENT_BINARY_DIR}/font_fredoka_${weight}.cpp")
+    foreach(pair "dmsans_regular;DMSans-Regular.ttf" "dmsans_semibold;DMSans-SemiBold.ttf"
+                 "dmsans_bold;DMSans-Bold.ttf" "lucide_icons;lucide-icons.ttf")
+        list(GET pair 0 name)
+        list(GET pair 1 file)
+        set(out "${CMAKE_CURRENT_BINARY_DIR}/font_${name}.cpp")
         add_custom_command(OUTPUT "${out}"
-            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/Fredoka-${weight}.ttf
-                    -DOUTPUT=${out} -DSYMBOL=knid_font_fredoka_${weight} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
-            DEPENDS assets/fonts/Fredoka-${weight}.ttf cmake/embed.cmake
-            COMMENT "Embedding Fredoka ${weight}")
+            COMMAND "${CMAKE_COMMAND}" -DINPUT=${PROJECT_SOURCE_DIR}/assets/fonts/${file}
+                    -DOUTPUT=${out} -DSYMBOL=knid_font_${name} -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+            DEPENDS assets/fonts/${file} cmake/embed.cmake
+            COMMENT "Embedding ${file}")
         list(APPEND knid_font_cpp "${out}")
     endforeach()
     # The KNID logo for the launcher card (a small palette PNG of docs/knid-logo.png).
@@ -199,7 +202,7 @@ if(TARGET SDL3::SDL3)
         COMMENT "Embedding the KNID logo")
     list(APPEND knid_font_cpp "${out}")
     # License texts compiled in (shown in F1 > About and by --licenses).
-    foreach(pair "license;LICENSE" "notices;THIRD_PARTY_NOTICES.md" "fredoka_ofl;assets/fonts/OFL.txt")
+    foreach(pair "license;LICENSE" "notices;THIRD_PARTY_NOTICES.md" "dmsans_ofl;assets/fonts/DMSans-OFL.txt")
         list(GET pair 0 name)
         list(GET pair 1 file)
         set(out "${CMAKE_CURRENT_BINARY_DIR}/text_${name}.cpp")
@@ -217,6 +220,7 @@ if(TARGET SDL3::SDL3)
         src/app/app.cpp
         src/app/platform.cpp
         src/app/theme.cpp
+        src/app/theme_colors.cpp
         src/app/licenses.cpp
         src/app/toast.cpp
         ${knid_font_cpp}
@@ -300,7 +304,7 @@ if(TARGET SDL3::SDL3)
         install(FILES packaging/linux/knid.desktop DESTINATION share/applications)
         install(FILES "${knid_png}" DESTINATION share/icons/hicolor/256x256/apps)
         install(FILES LICENSE THIRD_PARTY_NOTICES.md packaging/README-Linux.txt DESTINATION share/doc/knid)
-        install(FILES assets/fonts/OFL.txt DESTINATION share/doc/knid RENAME Fredoka-OFL.txt)
+        install(FILES assets/fonts/DMSans-OFL.txt assets/fonts/Lucide-LICENSE.txt DESTINATION share/doc/knid)
     endif()
 else()
     message(WARNING "SDL3 not found and KNID_FETCH_SDL is OFF: only building knid_core")
