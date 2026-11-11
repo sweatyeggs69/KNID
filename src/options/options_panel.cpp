@@ -397,7 +397,7 @@ bool any_pressed(std::initializer_list<ImGuiKey> keys) {
 }
 
 // One sidebar entry, after Bookie's sidebar: a rounded row that fills on hover. The selected page
-// gets the raised surface and a short accent bar on its left edge. icon is optional.
+// gets the raised surface. icon is optional.
 bool nav_item(const char* label, bool selected, float height, const char* icon = nullptr, bool sub = false,
               const std::string& page = {}) {
     const auto& c = theme::palette();
@@ -409,8 +409,6 @@ bool nav_item(const char* label, bool selected, float height, const char* icon =
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + size.x, pos.y + size.y);
     if (selected || hovered) dl->AddRectFilled(pos, end, theme::u32(selected ? c.raised : c.high, selected ? 1.0f : 0.6f), 8.0f);
-    if (selected && sub)
-        dl->AddRectFilled(pos, ImVec2(pos.x + 2.0f, end.y), theme::u32(c.accent), 1.0f);
     // Keyboard / controller focus: the same ring as every other control.
     st.sidebar_next.push_back({ImGui::GetItemID(), page});
     if (st.focus_target == ImGui::GetItemID()) {  // moved here by update_focus_hops
