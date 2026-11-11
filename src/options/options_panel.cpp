@@ -212,22 +212,62 @@ void display_tab(Config& config) {
 
 }
 
+// Key bindings tables: a name column, then one column per device, each cell a field that
+// rebinds when activated (Enter, controller A or a click) and clears on Delete, controller X or
+// a right click.
+using input::Source;
+enum class CellAction { None, Rebind, Clear };
+
+std::string remap_prompt_for(Source src) {
+    return src == Source::Keyboard ? "Press a key...  (Esc keeps it)" : "Press a button...  (Esc keeps it)";
+}
+
+bool begin_bindings_table(const char* id, const char* first, float first_width) {
+    if (!ImGui::BeginTable(id, 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchSame |
+                                      ImGuiTableFlags_PadOuterX))
+        return false;
+    ImGui::TableSetupColumn(first, ImGuiTableColumnFlags_WidthFixed, std::max(first_width, 110.0f));
+    ImGui::TableSetupColumn("Keyboard");
+    ImGui::TableSetupColumn("Controller");
+    // Plain text headers: TableHeadersRow makes them focusable, which gets in the way of
+    // keyboard and controller navigation.
+    ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::palette().ink_muted);
+    for (int i = 0; i < 3; ++i) {
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(ImGui::TableGetColumnName(i));
+    }
+    ImGui::PopStyleColor();
+    return true;
+}
+
+CellAction binding_cell(input::Manager& in, Source src, bool waiting, const std::string& text) {
+    ImGui::PushID(int(src));
+    ImGui::BeginDisabled(in.remapping() && !waiting);
+    CellAction act = CellAction::None;
+    if (theme::binding_cell("##cell", text.c_str(), waiting) && !in.remapping()) act = CellAction::Rebind;
+    if (!in.remapping() && act == CellAction::None) {
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right) ||
+            (ImGui::IsItemFocused() && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
+                                        ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false))))
+            act = CellAction::Clear;
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+    return act;
+}
+
 void controls_tab(input::Manager& in, Config& config) {
     const Button waiting = in.remap_target();
     theme::section("Buttons");
 
-    ImGui::TextWrapped("Click a button to rebind it, then press a key, controller button or "
-                       "stick direction. A keyboard key replaces the keyboard binding and a "
-                       "controller input replaces the controller binding, so both keep working.");
+    ImGui::TextWrapped("Select a binding and press Enter, A or click it, then press the new key "
+                       "or controller button. Keyboard and controller bindings are kept apart, so "
+                       "both keep working. Delete, X on a controller or a right click clears one.");
     ImGui::Text("Controllers connected: %d", in.gamepad_count());
     ImGui::Spacing();
 
-    if (ImGui::BeginTable("bindings", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
-                                             ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("GBA button", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Bound to");
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableHeadersRow();
+    if (begin_bindings_table("bindings", "GBA button", ImGui::CalcTextSize("GBA button").x)) {
         static constexpr Button kOrder[] = {Button::Up, Button::Down, Button::Left, Button::Right,
                                             Button::A,  Button::B,    Button::L,    Button::R,
                                             Button::Start, Button::Select};
@@ -237,13 +277,15 @@ void controls_tab(input::Manager& in, Config& config) {
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(input::name(b));
-            ImGui::TableNextColumn();
-            if (waiting == b) ImGui::TextUnformatted("Press a key or button...  (Esc to keep)");
-            else ImGui::TextWrapped("%s", in.describe(b).c_str());
-            ImGui::TableNextColumn();
-            ImGui::BeginDisabled(in.remapping());
-            if (ImGui::SmallButton("Rebind")) in.start_remap(b);
-            ImGui::EndDisabled();
+            for (Source src : {Source::Keyboard, Source::Controller}) {
+                ImGui::TableNextColumn();
+                const bool wait = waiting == b && in.remap_source() == src;
+                switch (binding_cell(in, src, wait, wait ? remap_prompt_for(src) : in.describe(b, src))) {
+                    case CellAction::Rebind: in.start_remap(b, src); break;
+                    case CellAction::Clear: in.clear(b, src); break;
+                    default: break;
+                }
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -280,7 +322,7 @@ void controls_tab(input::Manager& in, Config& config) {
             ImGui::PushID(200 + int(b));
             const std::uint16_t bit = std::uint16_t(1u << int(b));
             bool sel = (mask & bit) != 0;
-            if (ImGui::Checkbox(input::name(b), &sel)) {
+            if (theme::checkbox(input::name(b), &sel)) {
                 mask = sel ? std::uint16_t(mask | bit) : std::uint16_t(mask & ~bit);
                 mask_changed = true;
             }
@@ -298,12 +340,7 @@ void controls_tab(input::Manager& in, Config& config) {
     ImGui::TextWrapped("For a controller shortcut, hold the buttons together (up to two) and "
                        "let go. F1, F11 and Esc are kept for the menu and fullscreen.");
     const input::Hotkey hk_waiting = in.hotkey_remap_target();
-    if (ImGui::BeginTable("shortcuts", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
-                                              ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Bound to");
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableHeadersRow();
+    if (begin_bindings_table("shortcuts", "Action", ImGui::CalcTextSize(input::name(input::Hotkey::SaveNewSlot)).x)) {
         for (int i = 0; i < input::kHotkeyCount; ++i) {
             const auto h = input::Hotkey(i);
             ImGui::PushID(100 + i);
@@ -311,15 +348,16 @@ void controls_tab(input::Manager& in, Config& config) {
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(input::name(h));
-            ImGui::TableNextColumn();
-            if (hk_waiting == h) ImGui::TextUnformatted("Press a key or buttons...  (Esc to keep)");
-            else ImGui::TextWrapped("%s", in.describe(h).c_str());
-            ImGui::TableNextColumn();
-            ImGui::BeginDisabled(in.remapping());
-            if (ImGui::SmallButton("Rebind")) in.start_remap(h);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Clear")) in.clear(h);
-            ImGui::EndDisabled();
+            for (Source src : {Source::Keyboard, Source::Controller}) {
+                ImGui::TableNextColumn();
+                const bool wait = hk_waiting == h && in.remap_source() == src;
+                const std::string prompt = src == Source::Keyboard ? "Press a key..." : "Hold buttons, then let go...";
+                switch (binding_cell(in, src, wait, wait ? prompt : in.describe(h, src))) {
+                    case CellAction::Rebind: in.start_remap(h, src); break;
+                    case CellAction::Clear: in.clear(h, src); break;
+                    default: break;
+                }
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -361,7 +399,7 @@ bool nav_item(const char* label, bool selected, float height, const char* icon =
     auto& st = state();
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     const ImVec2 size(ImGui::GetContentRegionAvail().x, height);
-    const bool pressed = ImGui::InvisibleButton(label, size);
+    const bool pressed = theme::nav_button(label, size);
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + size.x, pos.y + size.y);

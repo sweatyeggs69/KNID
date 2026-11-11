@@ -66,8 +66,17 @@ bool button(const char* label, ImVec2 size, ButtonKind kind = ButtonKind::Primar
 inline bool big_button(const char* label, ImVec2 size, bool primary = true) {
     return button(label, size, primary ? ButtonKind::Primary : ButtonKind::Outline);
 }
+// InvisibleButton that keyboard and controller navigation can reach, without ImGui's own focus
+// rectangle: the theme's widgets draw their own ring.
+bool nav_button(const char* id, ImVec2 size);
 // On/off switch with its label to the right; a drop-in for ImGui::Checkbox.
 bool toggle(const char* label, bool* value);
+// Square checkbox with a check icon and its label to the right; a drop-in for ImGui::Checkbox.
+bool checkbox(const char* label, bool* value);
+// One cell of a key bindings table: a field showing the binding (or a prompt while waiting for
+// input) that returns true when clicked or activated. width 0 fills the column. The cell is the
+// last item, so callers can check IsItemFocused / IsItemClicked(right) after it.
+bool binding_cell(const char* id, const char* text, bool waiting, float width = 0.0f);
 // Text centered horizontally in the current window.
 void centered_text(const char* text, ImFont* font = nullptr, ImVec4 color = ImVec4(0, 0, 0, 0));
 

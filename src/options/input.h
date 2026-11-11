@@ -25,6 +25,14 @@ struct Binding {
     bool operator==(const Binding&) const = default;
 };
 
+// Which column of the bindings table an input belongs to: keyboard, or controller (gamepad
+// buttons and sticks). Any means either.
+enum class Source { Any, Keyboard, Controller };
+inline bool is_keyboard(const Binding& b) { return b.kind == Binding::Kind::Key; }
+inline bool matches(Source s, const Binding& b) {
+    return s == Source::Any || (s == Source::Keyboard) == is_keyboard(b);
+}
+
 // "key:X", "pad:a", "axis:leftx-", "axis:righttrigger+"
 std::string to_string(const Binding& b);
 bool from_string(const std::string& s, Binding& out);
@@ -83,14 +91,18 @@ public:
     // Remapping walks through every button in turn. The first key, pad button or stick
     // direction pressed replaces that button's bindings for that device type.
     void start_remap();
-    // Rebinds just one button (used by the options screen's click-to-rebind).
-    void start_remap(Button only);
+    // Rebinds just one button (used by the options screen's click-to-rebind). With a source,
+    // only that device's input binds; pressing anything on the other device (or Esc) keeps
+    // the current binding.
+    void start_remap(Button only, Source source = Source::Any);
     // Button currently waiting for input, or Button::Count when not remapping.
     Button remap_target() const;
     // Rebinds one shortcut: the next key, or controller button(s) pressed together and released.
-    void start_remap(Hotkey only);
+    void start_remap(Hotkey only, Source source = Source::Any);
     Hotkey hotkey_remap_target() const { return hotkey_remap_; }
-    void clear(Hotkey h);  // unbinds a shortcut
+    void clear(Hotkey h, Source source = Source::Any);  // unbinds a shortcut
+    void clear(Button b, Source source);  // drops one device's bindings for a GBA button
+    Source remap_source() const { return remap_source_; }
     // Off for the settings menu's own instance, so shortcuts never fire while it is open.
     void set_shortcuts_enabled(bool on) { shortcuts_enabled_ = on; }
     void cancel_remap();
@@ -100,8 +112,9 @@ public:
 
     void reset_to_defaults();
     const Config& config() const { return config_; }
-    std::string describe(Button b) const;  // "X, A Button" style summary for menus and messages
-    std::string describe(Hotkey h) const;  // "Page Up, Back Button + Right Bumper"
+    // "X, A Button" style summaries for menus and messages, optionally one device's only.
+    std::string describe(Button b, Source source = Source::Any) const;
+    std::string describe(Hotkey h, Source source = Source::Any) const;  // "Page Up, Back Button + Right Bumper"
     std::string take_message();           // one-shot status text for the on-screen display
     int gamepad_count() const { return int(pads_.size()); }
 
@@ -117,6 +130,7 @@ private:
     std::vector<SDL_Gamepad*> pads_;
     int remap_index_ = -1;
     bool remap_single_ = false;
+    Source remap_source_ = Source::Any;  // device the current single rebind listens to
     std::array<bool, SDL_GAMEPAD_AXIS_COUNT> axis_armed_{};  // axis returned to center since prompt
     std::string message_;
     Hotkey hotkey_remap_ = Hotkey::Count;

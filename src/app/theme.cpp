@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 #include <unordered_map>
 
 extern const unsigned char knid_font_dmsans_regular[];
@@ -147,10 +148,17 @@ void draw_backdrop(ImDrawList* dl, ImVec2 mn, ImVec2 mx) {
     glow(ImVec2(mn.x + w * 0.15f, mn.y + h * 0.95f), std::max(w, h) * 0.45f, c.accent, 0.25f);
 }
 
+bool nav_button(const char* id, ImVec2 size) {
+    ImGui::PushStyleColor(ImGuiCol_NavCursor, ImVec4(0, 0, 0, 0));
+    const bool pressed = ImGui::InvisibleButton(id, size, ImGuiButtonFlags_EnableNav);
+    ImGui::PopStyleColor();
+    return pressed;
+}
+
 bool button(const char* label, ImVec2 size, ButtonKind kind, const char* icon) {
     const Palette& c = palette();
     ImVec2 pos = ImGui::GetCursorScreenPos();
-    const bool pressed = ImGui::InvisibleButton(label, size);
+    const bool pressed = nav_button(label, size);
     const bool hovered = ImGui::IsItemHovered();
     const bool held = ImGui::IsItemActive();
     const bool focused = ImGui::IsItemFocused() && GImGui->NavCursorVisible;
@@ -208,7 +216,7 @@ bool toggle(const char* label, bool* value) {
     ImGui::AlignTextToFramePadding();  // a help marker on the same line lines up with the label
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     const float label_w = ts.x > 0 ? style.ItemInnerSpacing.x + ts.x : 0.0f;
-    const bool pressed = ImGui::InvisibleButton(label, ImVec2(tw + label_w, h));
+    const bool pressed = nav_button(label, ImVec2(tw + label_w, h));
     if (pressed) *value = !*value;
     const bool hovered = ImGui::IsItemHovered();
     const bool focused = ImGui::IsItemFocused() && GImGui->NavCursorVisible;
@@ -223,6 +231,66 @@ bool toggle(const char* label, bool* value) {
     if (ts.x > 0)
         dl->AddText(ImVec2(pos.x + tw + style.ItemInnerSpacing.x, pos.y + (h - ts.y) * 0.5f),
                     ImGui::GetColorU32(ImGuiCol_Text), label, end);
+    return pressed;
+}
+
+bool checkbox(const char* label, bool* value) {
+    const Palette& c = palette();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const char* end = ImGui::FindRenderedTextEnd(label);
+    const ImVec2 ts = ImGui::CalcTextSize(label, end);
+    const float h = std::max(ImGui::GetFrameHeight(), ts.y);
+    const float bs = 18.0f;
+    ImGui::AlignTextToFramePadding();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const float label_w = ts.x > 0 ? style.ItemInnerSpacing.x + ts.x : 0.0f;
+    const bool pressed = nav_button(label, ImVec2(bs + label_w, h));
+    if (pressed) *value = !*value;
+    const bool hovered = ImGui::IsItemHovered();
+    const bool focused = ImGui::IsItemFocused() && GImGui->NavCursorVisible;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 a(pos.x, pos.y + (h - bs) * 0.5f), b(a.x + bs, a.y + bs);
+    const float rounding = 4.0f;
+    if (*value) {
+        dl->AddRectFilled(a, b, u32(hovered ? c.accent_hover : c.accent), rounding);
+        ImGui::PushFont(g_small);
+        const ImVec2 is = ImGui::CalcTextSize(KNID_ICON_CHECK);
+        dl->AddText(ImVec2(a.x + (bs - is.x) * 0.5f, a.y + (bs - is.y) * 0.5f), u32(c.on_accent),
+                    KNID_ICON_CHECK);
+        ImGui::PopFont();
+    } else {
+        dl->AddRectFilled(a, b, u32(hovered ? c.high : c.raised), rounding);
+        dl->AddRect(a, b, u32(hovered ? c.ink_faint : c.line), rounding, 0, 1.0f);
+    }
+    if (focused) dl->AddRect(ImVec2(a.x - 3, a.y - 3), ImVec2(b.x + 3, b.y + 3), u32(c.highlight), rounding + 3, 0, 2.0f);
+    if (ts.x > 0)
+        dl->AddText(ImVec2(pos.x + bs + style.ItemInnerSpacing.x, pos.y + (h - ts.y) * 0.5f),
+                    ImGui::GetColorU32(ImGuiCol_Text), label, end);
+    return pressed;
+}
+
+bool binding_cell(const char* id, const char* text, bool waiting, float width) {
+    const Palette& c = palette();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float w = width > 0 ? width : ImGui::GetContentRegionAvail().x;
+    const float h = ImGui::GetFrameHeight();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const bool pressed = nav_button(id, ImVec2(w, h));
+    const bool hovered = ImGui::IsItemHovered();
+    const bool focused = ImGui::IsItemFocused() && GImGui->NavCursorVisible;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 a = pos, b(pos.x + w, pos.y + h);
+    const float rounding = 8.0f;
+    dl->AddRectFilled(a, b, u32(waiting ? c.accent_soft : hovered ? c.high : c.raised), rounding);
+    dl->AddRect(a, b, u32(waiting ? c.accent : c.line), rounding, 0, 1.0f);
+    if (focused) dl->AddRect(ImVec2(a.x - 3, a.y - 3), ImVec2(b.x + 3, b.y + 3), u32(c.highlight), rounding + 3, 0, 2.0f);
+    const bool none = !waiting && std::string_view(text) == "None";
+    const ImVec4 ink = waiting ? c.accent : none ? c.ink_faint : c.ink;
+    const float ty = a.y + (h - ImGui::GetFontSize()) * 0.5f;
+    const ImVec2 ta(a.x + style.FramePadding.x, ty), tb(b.x - style.FramePadding.x, b.y);
+    ImGui::PushStyleColor(ImGuiCol_Text, ink);
+    ImGui::RenderTextEllipsis(dl, ta, tb, tb.x, tb.x, text, nullptr, nullptr);
+    ImGui::PopStyleColor();
     return pressed;
 }
 
