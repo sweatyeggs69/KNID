@@ -112,9 +112,6 @@ jobs:
   linux:
     name: Linux (x86_64 AppImage)
     runs-on: ubuntu-22.04
-    # Every package the build needs is preinstalled in this image (ci/linux/Dockerfile), so the
-    # job does not depend on GitHub's runners reaching an Ubuntu mirror.
-    container: ghcr.io/sweatyeggs69/gba-port-linux:22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -131,6 +128,32 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match the version in CMakeLists.txt ($VERSION)"
             exit 1
           fi
+      - name: Packages
+        # Runner DNS or mirror hiccups: apt retries each download, and the whole step is
+        # retried a few times instead of hanging until the job times out.
+        timeout-minutes: 15
+        run: |
+          # GitHub's runners have been unable to reach Ubuntu's own servers and the Azure mirror,
+          # so point apt only at the kernel.org mirror. Third-party repositories (Microsoft etc.)
+          # are dropped: the build needs nothing from them.
+          sudo rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources
+          m=https://mirrors.edge.kernel.org/ubuntu
+          printf 'deb %s jammy main universe\ndeb %s jammy-updates main universe\ndeb %s jammy-security main universe\n' \
+            $m $m $m | sudo tee /etc/apt/sources.list
+          apt_opts="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          for attempt in 1 2 3; do
+            if sudo apt-get $apt_opts update && sudo apt-get $apt_opts install -y --no-install-recommends ninja-build zlib1g-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev libibus-1.0-dev \
+            libfuse2 file desktop-file-utils; then
+              exit 0
+            fi
+            echo "apt failed (attempt $attempt), retrying in 20 s"
+            sleep 20
+          done
+          exit 1
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
