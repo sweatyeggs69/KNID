@@ -109,7 +109,8 @@ private:
     bool cheats_allowed() const;
     cheats::Flags cheat_flags() const;
     std::unique_ptr<states::Store> store_;
-    int slot_ = states::kAutoSlot;  // the slot the save / load shortcuts use
+    int slot_ = states::kDefaultSlot;  // the slot the save / load shortcuts use
+    bool slot_was_auto_ = false;  // the saved current slot was the old Auto slot (0)
     std::array<SDL_Texture*, states::kSlots + 1> thumb_tex_{};
     std::array<std::time_t, states::kSlots + 1> thumb_at_{};
     std::string states_msg_;
@@ -243,15 +244,16 @@ bool App::init_window() {
         presenter_->reset_history();
     });
     register_options_tab("Achievements", [this](Config&) { achievements_->draw_tab(); });
-    // Shortcuts use the Auto slot until the player picks a numbered one. (states.slot, used before
-    // 1.1.0, always pointed at a numbered slot, so it is left behind.)
-    slot_ = std::clamp(config_.get_int("states.current_slot", states::kAutoSlot), states::kAutoSlot, states::kSlots);
+    // Shortcuts and the save on quit use the current slot, Slot 1 until the player picks another.
+    // (0 was the Auto slot, removed in favor of Slot 1.)
+    slot_ = config_.get_int("states.current_slot", states::kDefaultSlot);
+    slot_was_auto_ = slot_ == 0;
+    if (slot_ < states::kFirstSlot || slot_ > states::kSlots) slot_ = states::kDefaultSlot;
     states::set_hotkeys({[this] { if (game_ && screen_ == Screen::Game) quick_save(); },
                          [this] { if (game_ && screen_ == Screen::Game) load_slot(slot_); },
                          [this](int d) {
                              if (!game_ || screen_ != Screen::Game) return;
-                             const int n = states::kSlots + 1;  // Auto, then slots 1..kSlots
-                             slot_ = ((slot_ + d) % n + n) % n;
+                             slot_ = states::step_slot(slot_, d);
                              config_.set_int("states.current_slot", slot_);
                              ensure_store();
                              const states::SlotInfo& i = store_ ? store_->info(slot_) : states::SlotInfo{};
@@ -660,8 +662,9 @@ void App::draw_launcher() {
                 (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false));
     bool focus_main = ImGui::IsWindowAppearing();
     ensure_store();
-    const states::SlotInfo* auto_info = store_ ? &store_->info(states::kAutoSlot) : nullptr;
-    bool has_auto = auto_info && auto_info->exists && auto_info->error.empty();
+    const int latest = store_ ? store_->latest() : -1;
+    const states::SlotInfo* latest_info = latest > 0 ? &store_->info(latest) : nullptr;
+    bool has_latest = latest_info != nullptr;
     if (game_ && game_paused_) {
         if (theme::button("Resume", ImVec2(bw, 50), ButtonKind::Primary, KNID_ICON_PLAY)) start_game();
         if (focus_main) ImGui::SetItemDefaultFocus();
@@ -670,9 +673,9 @@ void App::draw_launcher() {
             game_.reset();
             start_game();
         }
-    } else if (has_auto) {
+    } else if (has_latest) {
         if (theme::button("Continue", ImVec2(bw, 50), ButtonKind::Primary, KNID_ICON_PLAY))
-            load_slot(states::kAutoSlot);
+            load_slot(latest);
         if (focus_main) ImGui::SetItemDefaultFocus();
         if (theme::button("Play from the title screen", ImVec2(bw, 44), ButtonKind::Outline, KNID_ICON_RESTART))
             start_game();
@@ -713,7 +716,7 @@ void App::draw_launcher() {
         const ImU32 faint = theme::u32(c.ink_faint);
         dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(q.x + 12, q.y), faint, "ROM verified");
         std::string right = "v" KNID_VERSION;
-        if (has_auto && !(game_ && game_paused_)) right = "Auto save " + time_ago(std::time_t(auto_info->saved_at)) + "  ·  " + right;
+        if (has_latest && !(game_ && game_paused_)) right = "Saved " + time_ago(std::time_t(latest_info->saved_at)) + "  ·  " + right;
         const float rw = ImGui::CalcTextSize(right.c_str()).x;
         dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(q.x + bw - rw, q.y), faint, right.c_str());
         // The line reserves less than its full height: the card's bottom padding plus the font's
@@ -729,6 +732,12 @@ void App::ensure_store() {
     if (store_ || !rom_.ok) return;
     store_ = std::make_unique<states::Store>(config_.pref_dir() / "states" / rom_.rom.sha1, rom_.rom.sha1,
                                              save_path_for(config_, rom_));
+    // The old Auto state became Slot 1 and pushed slots up by one: keep pointing at the same state
+    // (Slot 1 if Auto was the current slot).
+    if (store_->shifted() > 0 && !slot_was_auto_ && slot_ <= store_->shifted()) {
+        slot_ += 1;
+        config_.set_int("states.current_slot", slot_);
+    }
 }
 
 SDL_Texture* App::thumb_texture(int slot) {
@@ -790,11 +799,10 @@ bool App::save_slot(int slot) {
     ensure_store();
     if (!store_ || !game_) return false;
     std::string err;
-    bool overwrote = slot != states::kAutoSlot && store_->info(slot).exists;
+    bool overwrote = store_->info(slot).exists;
     bool ok = store_->save(slot, *game_, &err);
-    if (ok) show_toast(slot == states::kAutoSlot ? "State saved to the Auto slot"
-                       : overwrote               ? "Slot " + std::to_string(slot) + " overwritten"
-                                                 : "State saved to slot " + std::to_string(slot),
+    if (ok) show_toast(overwrote ? "Slot " + std::to_string(slot) + " overwritten"
+                                 : "State saved to slot " + std::to_string(slot),
                        slot);
     else toast::show("Could not save the state", err, nullptr, 0, 0, 4500, toast::Style::Warning);
     states_msg_ = ok ? (overwrote ? "Overwrote " : "Saved to ") + states::slot_name(slot) + "." : err;
@@ -858,9 +866,7 @@ bool App::load_slot(int slot) {
     start_game();
     presenter_->reset_history();
     if (achievements_) achievements_->state_loaded();
-    show_toast(slot == states::kAutoSlot ? "State loaded from the Auto slot"
-                                         : "State loaded from slot " + std::to_string(slot),
-               slot);
+    show_toast("State loaded from slot " + std::to_string(slot), slot);
     states_msg_ = "Loaded " + states::slot_name(slot) + ".";
     states_msg_err_ = false;
     return true;
@@ -874,19 +880,24 @@ void App::startup() {
     bool shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
     bool autoload = config_.get_bool("states.autoload", false);
     bool exists = false, usable = false;
+    int resume = -1;
     std::string why;
     if (rom_.ok) {
         ensure_store();
-        const states::SlotInfo& a = store_->info(states::kAutoSlot);
-        exists = a.exists;
-        usable = a.exists && a.error.empty();
-        why = a.error;
+        resume = store_->latest();
+        usable = resume > 0;
+        for (int s = states::kFirstSlot; s <= states::kSlots && !usable; ++s) {
+            const states::SlotInfo& i = store_->info(s);
+            if (i.exists && !exists) why = states::slot_name(s) + ": " + i.error;
+            exists = exists || i.exists;
+        }
+        exists = exists || usable;
     } else {
         why = rom_error_.empty() ? "No ROM is chosen yet." : rom_error_;
     }
     switch (states::choose_startup(rom_.ok, opt_.play, autoload, exists, usable, shift)) {
-        case states::Startup::ResumeAuto:
-            if (load_slot(states::kAutoSlot)) return;
+        case states::Startup::Resume:
+            if (load_slot(resume)) return;
             why = states_msg_;
             break;
         case states::Startup::BootGame:
@@ -906,7 +917,7 @@ void App::auto_save() {
     ensure_store();
     if (store_) {
         std::string err;
-        if (!store_->save(states::kAutoSlot, *game_, &err)) std::fprintf(stderr, "knid: auto save failed: %s\n", err.c_str());
+        if (!store_->save(slot_, *game_, &err)) std::fprintf(stderr, "knid: auto save failed: %s\n", err.c_str());
     }
 }
 
@@ -961,7 +972,7 @@ void App::draw_states_tab() {
     float card_h = 2 * pad + thumb_h + 8 + ImGui::GetTextLineHeight() + 4 + small_line + 10 + 8 + kSlotButtonH;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     int col = 0;
-    for (int slot = 0; slot <= states::kSlots; ++slot) {
+    for (int slot = states::kFirstSlot; slot <= states::kSlots; ++slot) {
         const states::SlotInfo& i = store_->info(slot);
         bool usable = i.exists && i.error.empty();
         ImGui::PushID(slot);
@@ -1346,7 +1357,7 @@ void App::draw_game_tab(Config& config) {
     theme::section("Startup");
     bool autoload = config_.get_bool("states.autoload", false);
     if (theme::toggle("Auto-load save state on launch", &autoload)) config_.set_bool("states.autoload", autoload);
-    ImGui::TextDisabled("Opening KNID goes straight back to where you left off (the Auto save state).");
+    ImGui::TextDisabled("Opening KNID goes straight back to where you left off (your most recent save state).");
     ImGui::TextDisabled("Hold Shift while opening KNID to see this menu instead.");
 
     draw_save_section();
