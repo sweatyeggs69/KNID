@@ -1,5 +1,6 @@
 #include "app/achievements.h"
 
+#include <vector>
 #include <imgui.h>
 #include <rc_client.h>
 #include <rc_consoles.h>
@@ -544,7 +545,15 @@ void Achievements::Impl::draw_game() {
     if (!list) return;
     if (ImGui::BeginChild("##ra_list", ImVec2(0, 0), ImGuiChildFlags_None)) {
         bool first = true;
-        for (uint32_t bi = 0; bi < list->num_buckets; ++bi) {
+        // Unlocked achievements first (recently unlocked, then the rest), then rcheevos' order.
+        std::vector<uint32_t> order(list->num_buckets);
+        for (uint32_t bi = 0; bi < list->num_buckets; ++bi) order[bi] = bi;
+        auto rank = [&](uint32_t bi) {
+            const uint8_t t = list->buckets[bi].bucket_type;
+            return t == RC_CLIENT_ACHIEVEMENT_BUCKET_RECENTLY_UNLOCKED ? 0 : t == RC_CLIENT_ACHIEVEMENT_BUCKET_UNLOCKED ? 1 : 2;
+        };
+        std::stable_sort(order.begin(), order.end(), [&](uint32_t x, uint32_t y) { return rank(x) < rank(y); });
+        for (uint32_t bi : order) {
             const rc_client_achievement_bucket_t& bucket = list->buckets[bi];
             bool only_warning = bucket.num_achievements == 1 && bucket.achievements[0]->id == kWarningAchievementId;
             if (only_warning) continue;
