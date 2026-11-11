@@ -134,6 +134,11 @@ jobs:
         timeout-minutes: 15
         run: |
           # Use Ubuntu's own servers instead of the runner's Azure mirror, which has been unreachable.
+          # The runner's sources point at a mirror list (mirror+file:/etc/apt/apt-mirrors.txt), so
+          # replace that list too.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt
+          fi
           sudo sed -i 's#azure\.archive\.ubuntu\.com#archive.ubuntu.com#g' \
             /etc/apt/sources.list $(ls /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null)
           apt_opts="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
