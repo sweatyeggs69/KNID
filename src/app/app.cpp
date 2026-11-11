@@ -695,7 +695,7 @@ void App::draw_launcher() {
     }
     update_ui::draw_launcher_notice(*updater_, config_);
 
-    // Footer: ROM status on the left, most recent save state and version on the right.
+    // Footer: ROM status on the left, last auto save and version on the right.
     ImGui::Dummy(ImVec2(0, 2));
     {
         ImDrawList* dl = ImGui::GetWindowDrawList();
