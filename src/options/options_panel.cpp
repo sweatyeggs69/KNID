@@ -220,7 +220,8 @@ using input::Source;
 enum class CellAction { None, Rebind, Clear };
 
 std::string remap_prompt_for(Source src) {
-    return src == Source::Keyboard ? "Press a key...  (Esc keeps it)" : "Press a button...  (Esc keeps it)";
+    (void)src;
+    return "Press any key...";
 }
 
 bool begin_bindings_table(const char* id, const char* first, float first_width) {
@@ -355,7 +356,7 @@ void controls_tab(input::Manager& in, Config& config) {
             for (Source src : {Source::Keyboard, Source::Controller}) {
                 ImGui::TableNextColumn();
                 const bool wait = hk_waiting == h && in.remap_source() == src;
-                const std::string prompt = src == Source::Keyboard ? "Press a key..." : "Hold buttons, then let go...";
+                const std::string prompt = remap_prompt_for(src);
                 switch (binding_cell(in, src, wait, wait ? prompt : in.describe(h, src))) {
                     case CellAction::Rebind: in.start_remap(h, src); break;
                     case CellAction::Clear: in.clear(h, src); break;
