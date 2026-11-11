@@ -27,11 +27,7 @@
 
 Get the latest version from the [Releases page](https://github.com/sweatyeggs69/KNID/releases/latest).
 
-| System | File | First time you open it |
-| --- | --- | --- |
-| macOS 11 or newer (Apple Silicon and Intel) | `KNID-<version>-macOS.dmg` | Drag KNID into Applications. Right-click KNID and choose **Open**, then **Open** again. |
-| Windows 10 or 11 (64-bit) | `KNID-<version>-Windows-x64.exe` | One self-contained file: put it in a folder you like and run it. If SmartScreen appears, choose **More info**, then **Run anyway**. |
-| Linux (x86_64) | `KNID-<version>-Linux-x64.AppImage` | Run `chmod +x KNID-*.AppImage`, then start it. |
+[![Verified developer on RecompStore](https://recompstore.com/assets/press/verified-dark.svg)](https://recompstore.com/dev/sweatyeggs69)
 
 ## Getting started
 
@@ -55,14 +51,6 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 - **Optional BIOS** with the original boot animation (not required).
 - **One-click shortcut** to start the game directly.
 - **Works with [RecompLauncher](https://recomplauncher.com)**.
-
-### Works with RecompLauncher
-
-KNID works with [RecompLauncher](https://recomplauncher.com), which installs and updates it from
-these releases. Pick your ROM there and it is checked against the verified USA dump, set as KNID's
-game, and started with Play. The display settings show on the game's page too.
-
-[![Verified developer on RecompStore](https://recompstore.com/assets/press/verified-dark.svg)](https://recompstore.com/dev/sweatyeggs69)
 
 ## Controls
 
