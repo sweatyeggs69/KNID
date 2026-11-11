@@ -201,6 +201,17 @@ if(TARGET SDL3::SDL3)
         DEPENDS assets/logo/knid-logo.png cmake/embed.cmake
         COMMENT "Embedding the KNID logo")
     list(APPEND knid_font_cpp "${out}")
+    # The app icon (512x512, rendered by knid_icon), written into the shortcuts the launcher
+    # creates so they carry the KNID icon even from a plain build/knid.
+    set(icon_png "${CMAKE_CURRENT_BINARY_DIR}/knid-icon-512.png")
+    set(out "${CMAKE_CURRENT_BINARY_DIR}/image_icon.cpp")
+    add_custom_command(OUTPUT "${out}"
+        COMMAND knid_icon --png 512 "${icon_png}"
+        COMMAND "${CMAKE_COMMAND}" -DINPUT=${icon_png} -DOUTPUT=${out}
+                -DSYMBOL=knid_image_icon -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+        DEPENDS knid_icon cmake/embed.cmake
+        COMMENT "Embedding the KNID app icon")
+    list(APPEND knid_font_cpp "${out}")
     # License texts compiled in (shown in F1 > About and by --licenses).
     foreach(pair "license;LICENSE" "notices;THIRD_PARTY_NOTICES.md" "dmsans_ofl;assets/fonts/DMSans-OFL.txt")
         list(GET pair 0 name)
