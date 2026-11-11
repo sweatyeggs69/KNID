@@ -133,13 +133,15 @@ jobs:
         # retried a few times instead of hanging until the job times out.
         timeout-minutes: 15
         run: |
-          # Use Ubuntu's own servers instead of the runner's Azure mirror, which has been unreachable.
-          # The runner's sources point at a mirror list (mirror+file:/etc/apt/apt-mirrors.txt), so
-          # replace that list too.
+          # The runner's Azure Ubuntu mirror (and at times archive.ubuntu.com) has been unreachable
+          # from GitHub's runners. The runner's sources use a mirror list
+          # (mirror+file:/etc/apt/apt-mirrors.txt); apt tries its entries in order, so list the
+          # kernel.org mirror first and Ubuntu's own servers after it.
           if [ -f /etc/apt/apt-mirrors.txt ]; then
-            echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt
+            printf '%s\n' https://mirrors.edge.kernel.org/ubuntu/ http://archive.ubuntu.com/ubuntu/ \
+              | sudo tee /etc/apt/apt-mirrors.txt
           fi
-          sudo sed -i 's#azure\.archive\.ubuntu\.com#archive.ubuntu.com#g' \
+          sudo sed -i 's#http://azure\.archive\.ubuntu\.com/ubuntu#https://mirrors.edge.kernel.org/ubuntu#g' \
             /etc/apt/sources.list $(ls /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null)
           apt_opts="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
           for attempt in 1 2 3; do
