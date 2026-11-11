@@ -44,6 +44,7 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 - **Save states**: ten slots plus Auto, with thumbnails, quick save/load (to the Auto slot unless you pick another),
   save to a new slot, and
   optional auto-load on launch.
+- **Cheats** (F1 > Cheats): unlimited health and lives, invincibility, and a fixed copy ability. Off in RetroAchievements hardcore mode.
 - **Import saves** from RetroArch, mGBA, VBA-M and others.
 - **RetroAchievements**, optional: sign in to earn achievements.
 - **Automatic updates** with your OK, without touching your saves.
