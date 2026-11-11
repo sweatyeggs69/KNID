@@ -41,7 +41,7 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 - **Themed launcher** with your game's title screen behind it and **Continue** to pick up where you left off.
 - **One settings menu (F1)** for display (scaling, widescreen, screen effects) and controls.
 - **Controllers and remapping** for keyboard and gamepads.
-- **Save states**: ten slots plus Auto, with thumbnails, quick save/load (to the Auto slot unless you pick another),
+- **Save states**: ten slots with thumbnails, quick save/load (to Slot 1 unless you pick another),
   save to a new slot, and
   optional auto-load on launch.
 - **Import saves** from RetroArch, mGBA, VBA-M and others.
