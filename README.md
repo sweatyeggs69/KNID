@@ -51,25 +51,6 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 - **One-click shortcut** to start the game directly.
 - **Works with [RecompLauncher](https://recomplauncher.com)**.
 
-## Controls
-
-Defaults; change them in Settings > Controls.
-
-| Action | Keyboard | Gamepad |
-| --- | --- | --- |
-| D-pad | Arrow keys | D-pad or left stick |
-| A / B | X / Z | South / East (also North / West) |
-| L / R | A / S | Shoulders or triggers |
-| Start / Select | Enter / Backspace | Start / Back |
-| Settings menu | F1 or Esc | |
-| Quick save / load | Page Up / Page Down (Fn + Up / Down on a Mac laptop) | Back + R / Back + L |
-| Save to new slot | F9 | |
-| Previous / next slot | F6 / F7 | Back + D-pad left / right |
-| Fullscreen | F11 | |
-
-Quick save and quick load use the Auto slot until you pick another slot (F6 / F7, or click a slot in
-the States tab). Closing the game also saves to the Auto slot.
-
 ## FAQ
 
 **Which version of the game is supported?**
@@ -87,42 +68,6 @@ original boot animation.
 In your user folder, never inside the app: `~/Library/Application Support/KNID/KNID/` (macOS),
 `%APPDATA%\KNID\KNID\` (Windows) or `~/.local/share/KNID/KNID/` (Linux). Settings > Game >
 Saves > **Show save folder** opens it.
-
-<details>
-<summary><b>Building from source</b></summary>
-
-You need CMake 3.24+, a C++20 compiler and Git. SDL3 and Dear ImGui are fetched automatically.
-
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DKNID_VENDOR_SDL=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
-./build/knid
-```
-
-- **macOS app and DMG:** add `-DKNID_MACOS_BUNDLE=ON "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"`
-  and build the `dmg` target.
-- **Windows:** Visual Studio 2022; `vcpkg install zlib:x64-windows-static` and pass the vcpkg
-  toolchain with `-DVCPKG_TARGET_TRIPLET=x64-windows-static -DKNID_PACKAGE=ON`, then build
-  `package_exe`.
-- **Linux:** install the SDL build dependencies (X11/Wayland, ALSA/PulseAudio, `zlib1g-dev`); see
-  `.github/workflows/build.yml` for the full list.
-
-Tests that need the game look for your ROM in the source folder and skip themselves otherwise.
-Never commit ROMs, BIOS files, saves, states or screenshots of the game.
-
-</details>
-
-<details>
-<summary><b>For maintainers</b></summary>
-
-- **Releases:** bump `VERSION` in `project(knid ...)` in `CMakeLists.txt`, then push a matching tag
-  like `v1.0.0`. GitHub Actions builds all three platforms and publishes the release. Keep the file
-  names (`KNID-<version>-macOS.dmg`, `KNID-<version>-Windows-x64.exe`,
-  `KNID-<version>-Linux-x64.AppImage`, `SHA256SUMS.txt`, plus `recomplauncher.json` when the repository
-  has it); the in-app updater looks for them.
-
-</details>
 
 ## Contributing
 
