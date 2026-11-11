@@ -24,10 +24,9 @@
 > or HAL Laboratory. Kirby and all related names are trademarks of their respective owners.
 
 ## Download
+<a href="https://recomplauncher.com/game/knid"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg"></a>
 
 Get the latest version from the [Releases page](https://github.com/sweatyeggs69/KNID/releases/latest).
-
-[![Verified developer on RecompStore](https://recompstore.com/assets/press/verified-dark.svg)](https://recompstore.com/dev/sweatyeggs69)
 
 ## Getting started
 
