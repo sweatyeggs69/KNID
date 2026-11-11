@@ -165,6 +165,8 @@ bool button(const char* label, ImVec2 size, ButtonKind kind, const char* icon) {
     const ImVec2 a = pos, b(pos.x + size.x, pos.y + size.y);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const float rounding = 12.0f;
+    const float alpha = ImGui::GetStyle().Alpha;  // dimmed inside BeginDisabled()
+    auto u32 = [&](const ImVec4& col) { return theme::u32(col, alpha); };
 
     ImVec4 bg(0, 0, 0, 0), text = c.ink;
     bool border = false;

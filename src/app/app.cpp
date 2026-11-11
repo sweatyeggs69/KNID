@@ -947,9 +947,10 @@ void App::draw_states_tab() {
     float card_w = std::floor((avail - gap * float(cols - 1)) / float(cols));
     float thumb_w = card_w - 2 * pad, thumb_h = std::floor(thumb_w * 2.0f / 3.0f);
     ImGui::PushFont(theme::font_small());
-    float small_line = ImGui::GetTextLineHeight(), button_h = ImGui::GetFrameHeight();
+    float small_line = ImGui::GetTextLineHeight();
+    constexpr float kSlotButtonH = 34.0f;
     ImGui::PopFont();
-    float card_h = 2 * pad + thumb_h + 8 + ImGui::GetTextLineHeight() + 4 + small_line + 10 + button_h;
+    float card_h = 2 * pad + thumb_h + 8 + ImGui::GetTextLineHeight() + 4 + small_line + 10 + 8 + kSlotButtonH;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     int col = 0;
     for (int slot = 0; slot <= states::kSlots; ++slot) {
@@ -999,19 +1000,23 @@ void App::draw_states_tab() {
             ImGui::TextColored(i.exists ? c.bad : c.ink_muted, "%s", i.exists ? i.error.c_str() : "No state saved yet");
         }
         ImGui::PopFont();
+        // Save and Load share the row; the more menu is a square button on the right.
+        ImGui::Dummy(ImVec2(0, 2));
+        const float bh = kSlotButtonH, bgap = 6.0f;
+        const float bw = std::floor((thumb_w - bh - 2 * bgap) / 2);
         ImGui::BeginDisabled(!game_);
-        if (ImGui::SmallButton("Save")) save_slot(slot);
+        if (theme::button("Save", ImVec2(bw, bh), theme::ButtonKind::Outline)) save_slot(slot);
         ImGui::EndDisabled();
-        ImGui::SameLine();
+        ImGui::SameLine(0, bgap);
         ImGui::BeginDisabled(!usable);
-        if (ImGui::SmallButton("Load")) {
+        if (theme::button("Load", ImVec2(bw, bh), theme::ButtonKind::Primary)) {
             slot_ = slot;
             config_.set_int("states.current_slot", slot_);
             load_slot(slot);
         }
         ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (ImGui::SmallButton("...")) ImGui::OpenPopup("more");
+        ImGui::SameLine(0, bgap);
+        if (theme::button("...##more", ImVec2(bh, bh), theme::ButtonKind::Outline)) ImGui::OpenPopup("more");
         if (ImGui::BeginPopup("more")) {
             if (ImGui::MenuItem("Rename...", nullptr, false, usable)) {
                 rename_slot_ = slot;
