@@ -693,6 +693,7 @@ void App::draw_launcher() {
     update_ui::draw_launcher_notice(*updater_, config_);
 
     // Footer: ROM status on the left, last auto save and version on the right.
+    constexpr float kFooterTrim = 10.0f;
     ImGui::Dummy(ImVec2(0, 2));
     {
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -703,14 +704,15 @@ void App::draw_launcher() {
         const ImVec2 q = ImGui::GetCursorScreenPos();
         const float lh = ImGui::GetTextLineHeight();
         dl->AddCircleFilled(ImVec2(q.x + 3, q.y + lh * 0.5f), 3.0f, theme::u32(c.good), 12);
-        ImGui::SetCursorScreenPos(ImVec2(q.x + 12, q.y));
-        ImGui::TextColored(c.ink_faint, "ROM verified");
+        const ImU32 faint = theme::u32(c.ink_faint);
+        dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(q.x + 12, q.y), faint, "ROM verified");
         std::string right = "v" KNID_VERSION;
         if (has_auto && !(game_ && game_paused_)) right = "Auto save " + time_ago(std::time_t(auto_info->saved_at)) + "  ·  " + right;
         const float rw = ImGui::CalcTextSize(right.c_str()).x;
-        ImGui::SameLine();
-        ImGui::SetCursorScreenPos(ImVec2(q.x + bw - rw, q.y));
-        ImGui::TextColored(c.ink_faint, "%s", right.c_str());
+        dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(q.x + bw - rw, q.y), faint, right.c_str());
+        // The line reserves less than its full height: the card's bottom padding plus the font's
+        // descent and line gap left the footer looking further from the edge than the sides.
+        ImGui::Dummy(ImVec2(bw, std::max(1.0f, lh - kFooterTrim)));
         ImGui::PopFont();
     }
 

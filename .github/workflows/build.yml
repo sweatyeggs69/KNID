@@ -17,8 +17,8 @@ jobs:
     name: macOS (universal)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
         with:
           path: .deps
           key: deps-macos-${{ hashFiles('CMakeLists.txt') }}
@@ -43,7 +43,7 @@ jobs:
           fi
       - name: Package
         run: cmake --build build --target dmg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: KNID-macOS
           path: build/KNID-*-macOS.dmg
@@ -53,8 +53,8 @@ jobs:
     name: Windows (x64)
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
         with:
           path: |
             .deps
@@ -103,7 +103,7 @@ jobs:
             -not (Test-Path (Join-Path "$env:SystemRoot\System32" $_))
           }
           if ($bad) { Write-Host "::error title=Not self-contained::KNID.exe imports non-system DLLs: $($bad -join ', ')"; exit 1 }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: KNID-Windows
           path: build/KNID-*-Windows-x64.exe
@@ -113,8 +113,8 @@ jobs:
     name: Linux (x86_64 AppImage)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v5
         with:
           path: .deps
           key: deps-linux-${{ hashFiles('CMakeLists.txt') }}
@@ -194,7 +194,7 @@ jobs:
             ./appimagetool AppDir "KNID-${VERSION}-Linux-x64.AppImage"
           } > appimage.log 2>&1 || { cat appimage.log; fail; }
           cat appimage.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: KNID-Linux
           path: KNID-*-Linux-x64.AppImage
@@ -208,8 +208,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -230,7 +230,7 @@ jobs:
             esac
           done
           (cd dist && sha256sum KNID-* > SHA256SUMS.txt && cat SHA256SUMS.txt)
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/KNID-*-macOS.dmg
