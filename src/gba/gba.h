@@ -93,6 +93,9 @@ public:
     std::span<const u8> iwram() const { return iwram_; }
     std::span<const u8> ewram() const { return ewram_; }
     std::span<const u8> sram() const { return sram_; }
+    // Writable work RAM, for the cheats menu. Call between frames.
+    std::span<u8> iwram_mut() { return iwram_; }
+    std::span<u8> ewram_mut() { return ewram_; }
     std::string debug_state() const;
     // Logs unimplemented BIOS calls / unusual events to stderr when true.
     bool verbose = false;

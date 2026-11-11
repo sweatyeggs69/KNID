@@ -19,6 +19,7 @@
 
 #include "app/achievements.h"
 #include "app/bmp.h"
+#include "app/cheats.h"
 #include "app/config.h"
 #include "app/fsutil.h"
 #include "app/platform.h"
@@ -104,6 +105,9 @@ private:
     std::string hotkey_hint(bool brief) const;
     void show_toast(const std::string& text, int slot, toast::Style style = toast::Style::Success);
     void draw_states_tab();
+    void draw_cheats_tab(Config& config);
+    bool cheats_allowed() const;
+    cheats::Flags cheat_flags() const;
     std::unique_ptr<states::Store> store_;
     int slot_ = states::kAutoSlot;  // the slot the save / load shortcuts use
     std::array<SDL_Texture*, states::kSlots + 1> thumb_tex_{};
@@ -230,6 +234,7 @@ bool App::init_window() {
     updater_ = std::make_unique<update::Updater>(KNID_VERSION);
     register_options_tab("Game", [this](Config& c) { draw_game_tab(c); }, /*before_builtin=*/true);
     register_options_tab("States", [this](Config&) { draw_states_tab(); });
+    register_options_tab("Cheats", [this](Config& c) { draw_cheats_tab(c); });
     achievements_->set_restart_handler([this] {
         if (!game_) return;
         game_->flush_save();
@@ -464,6 +469,7 @@ void App::update_emulation() {
             script_keys_ = script_[script_pos_++].second;
         game_->set_keys(std::uint16_t(controls_->poll_frame() | script_keys_));
         game_->run_frame();
+        if (cheats_allowed()) cheats::apply(game_->ewram_mut(), game_->iwram_mut(), cheat_flags());
         if (achievements_) achievements_->frame(*game_);
         ++game_frames_;
         while (state_script_pos_ < state_script_.size() && state_script_[state_script_pos_].frame <= game_frames_) {
@@ -1255,6 +1261,62 @@ void App::draw_save_section() {
         if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
+}
+
+bool App::cheats_allowed() const { return !(achievements_ && achievements_->hardcore()); }
+
+cheats::Flags App::cheat_flags() const {
+    cheats::Flags f;
+    f.health = config_.get_bool("cheats.health", false);
+    f.lives = config_.get_bool("cheats.lives", false);
+    f.invincible = config_.get_bool("cheats.invincible", false);
+    const int ability = config_.get_int("cheats.ability", 0);
+    f.ability = cheats::known_ability(ability) ? std::uint8_t(ability) : 0;
+    return f;
+}
+
+void App::draw_cheats_tab(Config& config) {
+    theme::section("Kirby");
+    const bool allowed = cheats_allowed();
+    ImGui::BeginDisabled(!allowed);
+    struct Toggle { const char* label; const char* key; const char* help; };
+    static constexpr Toggle kToggles[] = {
+        {"Unlimited health", "cheats.health", "Health stays full, so damage never drains it."},
+        {"Unlimited lives", "cheats.lives", "Lives stay at 9 or more."},
+        {"Invincibility", "cheats.invincible", "Enemies and hazards pass through Kirby. Falling into a pit still costs a life."},
+    };
+    for (const Toggle& t : kToggles) {
+        bool on = config.get_bool(t.key, false);
+        if (theme::toggle(t.label, &on)) config.set_bool(t.key, on);
+        ImGui::PushFont(theme::font_small());
+        ImGui::TextDisabled("%s", t.help);
+        ImGui::PopFont();
+    }
+    {
+        const int current = config.get_int("cheats.ability", 0);
+        const char* preview = "Off";
+        for (const cheats::Ability& a : cheats::kAbilities)
+            if (a.id == current) preview = a.name;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Copy ability:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(200);
+        if (ImGui::BeginCombo("##ability", preview)) {
+            if (ImGui::Selectable("Off", current == 0)) config.set_int("cheats.ability", 0);
+            for (const cheats::Ability& a : cheats::kAbilities)
+                if (ImGui::Selectable(a.name, current == a.id)) config.set_int("cheats.ability", a.id);
+            ImGui::EndCombo();
+        }
+        ImGui::PushFont(theme::font_small());
+        ImGui::TextDisabled("Kirby always has this ability, even after a hit or swallowing an enemy.");
+        ImGui::PopFont();
+    }
+    ImGui::EndDisabled();
+    ImGui::Dummy(ImVec2(0, 4.0f));
+    ImGui::PushFont(theme::font_small());
+    if (!allowed) ImGui::TextDisabled("Cheats are off while RetroAchievements hardcore mode is on.");
+    else ImGui::TextDisabled("Cheats work inside levels only and never change your save file. They stay on until you turn them off.");
+    ImGui::PopFont();
 }
 
 void App::draw_game_tab(Config& config) {
