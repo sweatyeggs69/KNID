@@ -46,7 +46,7 @@ void draw_notes(const std::string& notes, float height) {
     ImGui::PushTextWrapPos(0);
     for (const auto& l : lines) {
         switch (l.kind) {
-            case update::NoteLine::Heading: ImGui::TextColored(c.pink, "%s", l.text.c_str()); break;
+            case update::NoteLine::Heading: ImGui::TextColored(c.accent, "%s", l.text.c_str()); break;
             case update::NoteLine::Bullet:
                 ImGui::Bullet();
                 ImGui::TextWrapped("%s", l.text.c_str());
@@ -77,7 +77,7 @@ void draw_panel(Updater& u, Config& config, bool popup) {
             ImGui::TextColored(c.good, "You have the latest version (%s).", st.current.c_str());
             break;
         case State::Available:
-            ImGui::TextColored(c.yellow, "KNID %s is available. You have %s.", st.latest.c_str(), st.current.c_str());
+            ImGui::TextColored(c.highlight, "KNID %s is available. You have %s.", st.latest.c_str(), st.current.c_str());
             break;
         case State::Downloading: {
             ImGui::Text("Downloading KNID %s...", st.latest.c_str());
@@ -150,7 +150,7 @@ void draw_panel(Updater& u, Config& config, bool popup) {
 
     if (newer && !st.notes.empty()) {
         ImGui::Dummy(ImVec2(0, 4));
-        ImGui::TextColored(c.text_dim, "What's new in %s", st.latest.c_str());
+        ImGui::TextColored(c.ink_muted, "What's new in %s", st.latest.c_str());
         draw_notes(st.notes, popup ? 220.0f : 200.0f);
     }
 }
@@ -174,7 +174,7 @@ void tick(Updater& u, Config& config) {
 }
 
 void draw_tab(Updater& u, Config& config) {
-    ImGui::SeparatorText("Version");
+    theme::section("Version");
     ImGui::AlignTextToFramePadding();
     ImGui::Text("KNID %s", u.status().current.c_str());
     ImGui::SameLine();
@@ -186,9 +186,9 @@ void draw_tab(Updater& u, Config& config) {
     ImGui::EndDisabled();
     draw_panel(u, config, false);
 
-    ImGui::SeparatorText("Automatic checks");
+    theme::section("Automatic checks");
     bool check = config.get_bool("updates.check", true);
-    if (ImGui::Checkbox("Check for updates when KNID opens", &check)) config.set_bool("updates.check", check);
+    if (theme::toggle("Check for updates when KNID opens", &check)) config.set_bool("updates.check", check);
     ImGui::PushTextWrapPos(0);
     ImGui::TextDisabled("KNID asks GitHub whether a newer version is out. Nothing about you, your game or your "
                         "saves is sent, and nothing installs without your OK.");
@@ -209,7 +209,7 @@ void draw_launcher_notice(Updater& u, Config& config) {
                   ImGui::CalcTextSize(button.c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
         ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetWindowSize().x - w) * 0.5f));
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(c.yellow, "%s", text.c_str());
+        ImGui::TextColored(c.highlight, "%s", text.c_str());
         ImGui::SameLine();
         if (ImGui::SmallButton(button.c_str())) ui().open_popup = true;
         ImGui::PopFont();

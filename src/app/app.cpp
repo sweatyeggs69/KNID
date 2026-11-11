@@ -128,6 +128,7 @@ private:
     void return_to_launcher();
     void draw_backdrop();
     void begin_card(const char* id, ImVec2 size);
+    void draw_card_logo();
     void capture_window(const std::string& path);
     void end_card();
 
@@ -258,8 +259,8 @@ bool App::init_window() {
         const auto& c = theme::palette();
         ImGui::TextUnformatted("KNID " KNID_VERSION);
         ImGui::PushFont(theme::font_small());
-        ImGui::TextColored(c.text_dim, "An unofficial project. Not affiliated with Nintendo or HAL Laboratory.");
-        ImGui::TextColored(c.text_dim, "https://github.com/sweatyeggs69/KNID");
+        ImGui::TextColored(c.ink_muted, "An unofficial project. Not affiliated with Nintendo or HAL Laboratory.");
+        ImGui::TextColored(c.ink_muted, "https://github.com/sweatyeggs69/KNID");
         ImGui::PopFont();
         auto block = [](const char* title, std::string_view text) {
             if (!ImGui::CollapsingHeader(title)) return;
@@ -273,7 +274,7 @@ bool App::init_window() {
         };
         block("KNID license (MIT)", licenses::knid());
         block("Third-party notices", licenses::notices());
-        block("Fredoka font license (SIL OFL 1.1)", licenses::fredoka_ofl());
+        block("DM Sans font license (SIL OFL 1.1)", licenses::font_ofl());
     });
     update_ui::set_restart_handler([this] { running_ = false; });  // relaunched after shutdown()
     // No network in scripted test runs, unless a test feed is set.
@@ -551,6 +552,8 @@ void App::load_logo() {
     int w = 0, h = 0, n = 0;
     unsigned char* px = stbi_load_from_memory(knid_image_logo, int(knid_image_logo_size), &w, &h, &n, 4);
     if (!px) return;  // the launcher falls back to the text title
+    // Trimmed to its visible pixels so it is drawn at the same height as every other port's logo.
+    theme::trim_logo(px, w, h);
     logo_tex_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
     if (logo_tex_) {
         SDL_UpdateTexture(logo_tex_, nullptr, px, w * 4);
@@ -558,6 +561,7 @@ void App::load_logo() {
         SDL_SetTextureScaleMode(logo_tex_, SDL_SCALEMODE_LINEAR);
         logo_w_ = w;
         logo_h_ = h;
+        set_options_menu_logo((ImTextureID)(intptr_t)logo_tex_, ImVec2(float(w), float(h)));
     }
     stbi_image_free(px);
 }
@@ -566,99 +570,149 @@ void App::begin_card(const char* id, ImVec2 size) {
     ImVec2 ds = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, ds.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::palette().card);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(28.0f, 28.0f));
     ImGui::Begin(id, nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
 }
 
 void App::end_card() { ImGui::End(); }
 
+// The logo at the top of the launcher cards: the same height in every port.
+void App::draw_card_logo() {
+    constexpr float kLogoHeight = 60.0f;
+    if (logo_tex_) {
+        theme::logo_image((ImTextureID)(intptr_t)logo_tex_, ImVec2(float(logo_w_), float(logo_h_)), kLogoHeight,
+                          ImGui::GetContentRegionAvail().x);
+    } else {
+        ImGui::Dummy(ImVec2(0, (kLogoHeight - ImGui::GetFontSize() * 30.0f / 17.0f) * 0.5f));
+        theme::centered_text("KNID", theme::font_title(), theme::palette().accent);
+    }
+}
+
 void App::draw_first_run() {
     const auto& c = theme::palette();
     ImVec2 ds = ImGui::GetIO().DisplaySize;
-    begin_card("##firstrun", ImVec2(std::min(620.0f, ds.x - 40), 0));
-    ImGui::Dummy(ImVec2(0, 4));
-    theme::centered_text("Welcome to KNID", theme::font_title(), c.pink);
-    theme::centered_text("Kirby: Nightmare in Dream Land, native on your computer", theme::font_small(), c.text_dim);
+    begin_card("##firstrun", ImVec2(std::min(560.0f, ds.x - 40), 0));
+    draw_card_logo();
+    theme::centered_text("Kirby: Nightmare in Dream Land, native on your computer", theme::font_small(), c.ink_muted);
     ImGui::Dummy(ImVec2(0, 8));
     ImGui::PushTextWrapPos(0);
     ImGui::TextUnformatted(
         "To play, choose your own copy of the game: a ROM file dumped from your cartridge of "
         "Kirby: Nightmare in Dream Land (USA).");
     ImGui::PushFont(theme::font_small());
-    ImGui::TextColored(c.text_dim, "KNID only remembers where the file is. It never copies, uploads or changes it.");
+    ImGui::TextColored(c.ink_muted, "KNID only remembers where the file is. It never copies, uploads or changes it.");
     ImGui::PopFont();
     ImGui::PopTextWrapPos();
-    ImGui::Dummy(ImVec2(0, 10));
+    ImGui::Dummy(ImVec2(0, 8));
     float bw = ImGui::GetContentRegionAvail().x;
     bool back = ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
-    if (theme::big_button("Choose ROM...", ImVec2(bw, 56))) open_rom_dialog();
+    if (theme::button("Choose ROM...", ImVec2(bw, 50), theme::ButtonKind::Primary, KNID_ICON_FOLDER_OPEN))
+        open_rom_dialog();
     if (ImGui::IsWindowAppearing()) ImGui::SetItemDefaultFocus();
     if (!rom_error_.empty()) {
-        ImGui::Dummy(ImVec2(0, 4));
         ImGui::PushTextWrapPos(0);
         ImGui::TextColored(c.bad, "%s", rom_error_.c_str());
         ImGui::PopTextWrapPos();
     }
-    ImGui::Dummy(ImVec2(0, 6));
     if (back) ImGui::SetKeyboardFocusHere();
-    if (theme::big_button("Quit", ImVec2(bw, 46), false)) running_ = false;
+    if (theme::button("Quit", ImVec2(bw, 44), theme::ButtonKind::Outline, KNID_ICON_LOG_OUT)) running_ = false;
     end_card();
 }
 
+namespace {
+std::string time_ago(std::time_t t) {
+    const std::time_t now = std::time(nullptr);
+    const long long d = t > 0 && now > t ? (long long)(now - t) : 0;
+    auto unit = [](long long n, const char* one) {
+        return std::to_string(n) + " " + one + (n == 1 ? "" : "s") + " ago";
+    };
+    if (d < 60) return "just now";
+    if (d < 3600) return unit(d / 60, "minute");
+    if (d < 86400) return unit(d / 3600, "hour");
+    return unit(d / 86400, "day");
+}
+}  // namespace
+
 void App::draw_launcher() {
     const auto& c = theme::palette();
+    using theme::ButtonKind;
     ImVec2 ds = ImGui::GetIO().DisplaySize;
-    begin_card("##launcher", ImVec2(std::min(560.0f, ds.x - 40), 0));
-    if (logo_tex_) {
-        const float lw = 230.0f, lh = lw * float(logo_h_) / float(logo_w_);
-        ImGui::SetCursorPosX((ImGui::GetWindowSize().x - lw) * 0.5f);
-        ImGui::Image((ImTextureID)(intptr_t)logo_tex_, ImVec2(lw, lh));
-        ImGui::Dummy(ImVec2(0, 6));
-    } else {
-        ImGui::Dummy(ImVec2(0, 2));
-        theme::centered_text("KNID", theme::font_title(), c.pink);
-        ImGui::Dummy(ImVec2(0, 12));
-    }
+    begin_card("##launcher", ImVec2(std::min(460.0f, ds.x - 40), 0));
+    draw_card_logo();
+    theme::centered_text("Kirby: Nightmare in Dream Land (USA)", theme::font_small(), c.ink_muted);
+    ImGui::Dummy(ImVec2(0, 6));
+
+    const ImGuiStyle& style = ImGui::GetStyle();
     float bw = ImGui::GetContentRegionAvail().x;
+    const float half = (bw - style.ItemSpacing.x) * 0.5f;
     // Keyboard/gamepad: the main button starts focused; B / Backspace moves the focus to Quit.
     bool back = !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
                 (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false));
     bool focus_main = ImGui::IsWindowAppearing();
     ensure_store();
-    bool has_auto = store_ && store_->info(states::kAutoSlot).exists && store_->info(states::kAutoSlot).error.empty();
+    const states::SlotInfo* auto_info = store_ ? &store_->info(states::kAutoSlot) : nullptr;
+    bool has_auto = auto_info && auto_info->exists && auto_info->error.empty();
     if (game_ && game_paused_) {
-        if (theme::big_button("Resume", ImVec2(bw, 58))) start_game();
+        if (theme::button("Resume", ImVec2(bw, 50), ButtonKind::Primary, KNID_ICON_PLAY)) start_game();
         if (focus_main) ImGui::SetItemDefaultFocus();
-        if (theme::big_button("Restart", ImVec2(bw, 46), false)) {
+        if (theme::button("Restart", ImVec2(bw, 44), ButtonKind::Outline, KNID_ICON_RESTART)) {
             game_->flush_save();
             game_.reset();
             start_game();
         }
     } else if (has_auto) {
-        if (theme::big_button("Continue", ImVec2(bw, 58))) load_slot(states::kAutoSlot);
+        if (theme::button("Continue", ImVec2(bw, 50), ButtonKind::Primary, KNID_ICON_PLAY))
+            load_slot(states::kAutoSlot);
         if (focus_main) ImGui::SetItemDefaultFocus();
-        if (theme::big_button("Play from the title screen", ImVec2(bw, 46), false)) start_game();
+        if (theme::button("Play from the title screen", ImVec2(bw, 44), ButtonKind::Outline, KNID_ICON_RESTART))
+            start_game();
     } else {
-        if (theme::big_button("Play", ImVec2(bw, 58))) start_game();
+        if (theme::button("Play", ImVec2(bw, 50), ButtonKind::Primary, KNID_ICON_PLAY)) start_game();
         if (focus_main) ImGui::SetItemDefaultFocus();
     }
     // Shortcuts are made in Settings > Game.
-    if (theme::big_button("Settings", ImVec2(bw, 46), false)) set_menu_open(true);
+    if (theme::button("Settings", ImVec2(half, 44), ButtonKind::Outline, KNID_ICON_SETTINGS)) set_menu_open(true);
+    ImGui::SameLine();
     if (back) ImGui::SetKeyboardFocusHere();
-    if (theme::big_button("Quit", ImVec2(bw, 46), false)) running_ = false;
+    if (theme::button("Quit", ImVec2(half, 44), ButtonKind::Outline, KNID_ICON_LOG_OUT)) running_ = false;
 
     // Status lines only; the Settings button already says where settings live.
     const bool show_info = !info_.empty() && ImGui::GetTime() < info_until_;
     if (!rom_error_.empty() || show_info) {
-        ImGui::Dummy(ImVec2(0, 2));
         ImGui::PushFont(theme::font_small());
         ImGui::PushTextWrapPos(0);
         if (!rom_error_.empty()) ImGui::TextColored(c.bad, "%s", rom_error_.c_str());
-        if (show_info) ImGui::TextColored(c.yellow, "%s", info_.c_str());
+        if (show_info) ImGui::TextColored(c.highlight, "%s", info_.c_str());
         ImGui::PopTextWrapPos();
         ImGui::PopFont();
     }
     update_ui::draw_launcher_notice(*updater_, config_);
+
+    // Footer: ROM status on the left, last auto save and version on the right.
+    ImGui::Dummy(ImVec2(0, 2));
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        dl->AddLine(p, ImVec2(p.x + bw, p.y), theme::u32(c.line), 1.0f);
+        ImGui::Dummy(ImVec2(0, 4));
+        ImGui::PushFont(theme::font_small());
+        const ImVec2 q = ImGui::GetCursorScreenPos();
+        const float lh = ImGui::GetTextLineHeight();
+        dl->AddCircleFilled(ImVec2(q.x + 3, q.y + lh * 0.5f), 3.0f, theme::u32(c.good), 12);
+        ImGui::SetCursorScreenPos(ImVec2(q.x + 12, q.y));
+        ImGui::TextColored(c.ink_faint, "ROM verified");
+        std::string right = "v" KNID_VERSION;
+        if (has_auto && !(game_ && game_paused_)) right = "Auto save " + time_ago(std::time_t(auto_info->saved_at)) + "  ·  " + right;
+        const float rw = ImGui::CalcTextSize(right.c_str()).x;
+        ImGui::SameLine();
+        ImGui::SetCursorScreenPos(ImVec2(q.x + bw - rw, q.y));
+        ImGui::TextColored(c.ink_faint, "%s", right.c_str());
+        ImGui::PopFont();
+    }
 
     end_card();
 }
@@ -903,7 +957,7 @@ void App::draw_states_tab() {
         bool usable = i.exists && i.error.empty();
         ImGui::PushID(slot);
         bool current = slot == slot_;
-        ImGui::PushStyleColor(ImGuiCol_Border, current ? c.yellow : ImVec4(1, 1, 1, 0.10f));
+        ImGui::PushStyleColor(ImGuiCol_Border, current ? c.highlight : ImVec4(1, 1, 1, 0.10f));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.5f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6, 6));
@@ -912,7 +966,7 @@ void App::draw_states_tab() {
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && !current) {
             ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
-            ImGui::GetWindowDrawList()->AddRect(wp, ImVec2(wp.x + ws.x, wp.y + ws.y), theme::u32(c.pink, 0.6f),
+            ImGui::GetWindowDrawList()->AddRect(wp, ImVec2(wp.x + ws.x, wp.y + ws.y), theme::u32(c.accent, 0.6f),
                                                 ImGui::GetStyle().ChildRounding, 0, 1.5f);
         }
         ImVec2 tp = ImGui::GetCursorScreenPos();
@@ -920,10 +974,10 @@ void App::draw_states_tab() {
             ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(thumb_w, thumb_h));
         } else {
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilled(tp, ImVec2(tp.x + thumb_w, tp.y + thumb_h), theme::u32(c.night), 10);
+            dl->AddRectFilled(tp, ImVec2(tp.x + thumb_w, tp.y + thumb_h), theme::u32(c.surface), 10);
             const char* empty = i.exists ? "Unusable" : "Empty";
             ImVec2 ts = ImGui::CalcTextSize(empty);
-            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + (thumb_h - ts.y) / 2), theme::u32(c.text_dim), empty);
+            dl->AddText(ImVec2(tp.x + (thumb_w - ts.x) / 2, tp.y + (thumb_h - ts.y) / 2), theme::u32(c.ink_muted), empty);
             ImGui::Dummy(ImVec2(thumb_w, thumb_h));
         }
         if (ImGui::IsItemClicked()) {
@@ -934,15 +988,15 @@ void App::draw_states_tab() {
         std::string title = states::slot_name(slot) + (i.label.empty() ? "" : ": " + i.label);
         // One line, cut with "..." so the card never grows.
         while (title.size() > 4 && ImGui::CalcTextSize(title.c_str()).x > thumb_w) title.resize(title.size() - 4), title += "...";
-        ImGui::TextColored(current ? c.yellow : c.text, "%s", title.c_str());
+        ImGui::TextColored(current ? c.highlight : c.ink, "%s", title.c_str());
         ImGui::PushFont(theme::font_small());
         if (usable) {
             char when[64];
             std::tm tm = local_time(i.saved_at);
             std::strftime(when, sizeof when, "%b %d, %H:%M", &tm);
-            ImGui::TextColored(c.text_dim, "%s  |  %s played", when, states::format_playtime(i.playtime_frames).c_str());
+            ImGui::TextColored(c.ink_muted, "%s  |  %s played", when, states::format_playtime(i.playtime_frames).c_str());
         } else {
-            ImGui::TextColored(i.exists ? c.bad : c.text_dim, "%s", i.exists ? i.error.c_str() : "No state saved yet");
+            ImGui::TextColored(i.exists ? c.bad : c.ink_muted, "%s", i.exists ? i.error.c_str() : "No state saved yet");
         }
         ImGui::PopFont();
         ImGui::BeginDisabled(!game_);
@@ -1097,7 +1151,7 @@ void App::export_save(const fs::path& dst) {
 
 void App::draw_save_section() {
     const auto& c = theme::palette();
-    ImGui::SeparatorText("Saves");
+    theme::section("Saves");
     fs::path saves = config_.pref_dir() / "saves";
     ImGui::TextWrapped("%s", saves.string().c_str());
     if (ImGui::Button("Show save folder")) {
@@ -1149,8 +1203,8 @@ void App::draw_save_section() {
             ImGui::TextDisabled("%s", pending_save_->format.c_str());
             ImGui::TextUnformatted("Your current save is backed up first (the last 10 are kept).");
             if (game_)
-                ImGui::TextColored(c.yellow, "Importing restarts the game; unsaved progress is lost.");
-            if (!pending_save_->warning.empty()) ImGui::TextColored(c.yellow, "%s", pending_save_->warning.c_str());
+                ImGui::TextColored(c.highlight, "Importing restarts the game; unsaved progress is lost.");
+            if (!pending_save_->warning.empty()) ImGui::TextColored(c.highlight, "%s", pending_save_->warning.c_str());
         }
         ImGui::Dummy(ImVec2(0, 4));
         if (ImGui::Button("Replace save")) {
@@ -1199,15 +1253,15 @@ void App::draw_save_section() {
 void App::draw_game_tab(Config& config) {
     (void)config;
     const auto& c = theme::palette();
-    ImGui::SeparatorText("Game ROM");
+    theme::section("Game ROM");
     if (rom_.ok) {
         ImGui::TextColored(c.good, "Kirby: Nightmare in Dream Land (USA), verified");
         ImGui::PushFont(theme::font_small());
-        ImGui::TextColored(c.text_dim, "%s [%s] rev %u", rom_.rom.header.title.c_str(), rom_.rom.header.game_code.c_str(),
+        ImGui::TextColored(c.ink_muted, "%s [%s] rev %u", rom_.rom.header.title.c_str(), rom_.rom.header.game_code.c_str(),
                            unsigned(rom_.rom.header.version));
-        ImGui::TextColored(c.text_dim, "SHA-1 %s", rom_.rom.sha1.c_str());
+        ImGui::TextColored(c.ink_muted, "SHA-1 %s", rom_.rom.sha1.c_str());
         ImGui::PushTextWrapPos(0);
-        ImGui::TextColored(c.text_dim, "%s", path_utf8(rom_.path).c_str());
+        ImGui::TextColored(c.ink_muted, "%s", path_utf8(rom_.path).c_str());
         ImGui::PopTextWrapPos();
         ImGui::PopFont();
     } else {
@@ -1220,15 +1274,15 @@ void App::draw_game_tab(Config& config) {
         ImGui::PopTextWrapPos();
     }
 
-    ImGui::SeparatorText("Startup");
+    theme::section("Startup");
     bool autoload = config_.get_bool("states.autoload", false);
-    if (ImGui::Checkbox("Auto-load save state on launch", &autoload)) config_.set_bool("states.autoload", autoload);
+    if (theme::toggle("Auto-load save state on launch", &autoload)) config_.set_bool("states.autoload", autoload);
     ImGui::TextDisabled("Opening KNID goes straight back to where you left off (the Auto save state).");
     ImGui::TextDisabled("Hold Shift while opening KNID to see this menu instead.");
 
     draw_save_section();
 
-    ImGui::SeparatorText("BIOS (optional)");
+    theme::section("BIOS (optional)");
     std::string bios = config_.get_string("bios.path");
     if (bios != bios_checked_path_) {  // verify once per change, not every frame
         bios_checked_path_ = bios;
@@ -1253,7 +1307,7 @@ void App::draw_game_tab(Config& config) {
     ImGui::SameLine();
     ImGui::TextDisabled("Takes effect the next time the game starts.");
 
-    ImGui::SeparatorText("Shortcut");
+    theme::section("Shortcut");
     ImGui::TextWrapped("A shortcut starts the game directly, skipping the launcher.");
     draw_shortcut_controls();
 }
@@ -1292,7 +1346,7 @@ void App::draw_shortcut_controls() {
     }
     if (!info_.empty() && ImGui::GetTime() < info_until_) {
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(c.yellow, "%s", info_.c_str());
+        ImGui::TextColored(c.highlight, "%s", info_.c_str());
         ImGui::PopTextWrapPos();
     }
     if (confirm_shortcut_) {
@@ -1322,11 +1376,11 @@ void App::draw_ui() {
         ImVec2 ds = ImGui::GetIO().DisplaySize;
         bool have_frame = attract_ || (game_ && game_paused_);
         if (have_frame) {
-            // Soft night tint over the game backdrop.
-            bg->AddRectFilledMultiColor(ImVec2(0, 0), ds, theme::u32(theme::palette().night, 0.35f),
-                                        theme::u32(theme::palette().night, 0.35f),
-                                        theme::u32(theme::palette().night, 0.75f),
-                                        theme::u32(theme::palette().night, 0.75f));
+            // Tint the game backdrop toward the theme's surface so the card reads clearly.
+            bg->AddRectFilledMultiColor(ImVec2(0, 0), ds, theme::u32(theme::palette().surface, 0.45f),
+                                        theme::u32(theme::palette().surface, 0.45f),
+                                        theme::u32(theme::palette().surface, 0.8f),
+                                        theme::u32(theme::palette().surface, 0.8f));
         } else {
             theme::draw_backdrop(bg, ImVec2(0, 0), ds);
         }

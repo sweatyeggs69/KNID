@@ -7,6 +7,7 @@
 #include <functional>
 
 struct ImFont;
+#include <imgui.h>  // ImTextureID, ImVec2
 
 #include "options/settings_io.h"
 
@@ -48,5 +49,7 @@ bool options_menu_open();
 void draw_options_menu(knid::Config& config);
 // Fonts for the page headings and the small hint text (the theme's). Optional.
 void set_options_menu_fonts(ImFont* heading, ImFont* small);
+// The game's logo at the top of the sidebar (trimmed to its visible pixels). Optional.
+void set_options_menu_logo(ImTextureID tex, ImVec2 size);
 // Optional "Quit to launcher" button. Without a handler the button is hidden.
 void set_options_menu_quit_handler(std::function<void()> on_quit);
