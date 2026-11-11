@@ -58,6 +58,7 @@ struct PanelState {
     std::vector<NavEntry> sidebar;     // last frame's sidebar entries, top to bottom
     std::vector<NavEntry> sidebar_next;
     ImGuiID focus_target = 0;          // give this sidebar entry the focus when it is drawn
+    ImGuiID cell_focused = 0;          // binding cell focused last frame (Backspace clears it)
     bool focus_page = false;           // put focus on the page's first control next frame
     ImGuiID left_from = 0;             // Left was pressed on this page control...
     int left_wait = 0;                 // ...and is checked again after this many frames
@@ -246,9 +247,12 @@ CellAction binding_cell(input::Manager& in, Source src, bool waiting, const std:
     ImGui::BeginDisabled(in.remapping() && !waiting);
     CellAction act = CellAction::None;
     if (theme::binding_cell("##cell", text.c_str(), waiting) && !in.remapping()) act = CellAction::Rebind;
+    if (ImGui::IsItemFocused()) state().cell_focused = ImGui::GetItemID();
     if (!in.remapping() && act == CellAction::None) {
+        // Backspace is the Mac delete key, so it clears here instead of going back to the sidebar.
         if (ImGui::IsItemClicked(ImGuiMouseButton_Right) ||
             (ImGui::IsItemFocused() && (ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
+                                        ImGui::IsKeyPressed(ImGuiKey_Backspace, false) ||
                                         ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false))))
             act = CellAction::Clear;
     }
@@ -263,7 +267,7 @@ void controls_tab(input::Manager& in, Config& config) {
 
     ImGui::TextWrapped("Select a binding and press Enter, A or click it, then press the new key "
                        "or controller button. Keyboard and controller bindings are kept apart, so "
-                       "both keep working. Delete, X on a controller or a right click clears one.");
+                       "both keep working. Delete (Backspace) or X on a controller clears one.");
     ImGui::Text("Controllers connected: %d", in.gamepad_count());
     ImGui::Spacing();
 
@@ -584,7 +588,9 @@ void update_focus_hops(PanelState& st, bool& open) {
         return;
     }
     auto it = std::find_if(st.sidebar.begin(), st.sidebar.end(), [&](const PanelState::NavEntry& e) { return e.id == g.NavId; });
-    const bool back = any_pressed({ImGuiKey_GamepadFaceRight, ImGuiKey_Backspace});
+    const bool on_cell = st.cell_focused != 0 && st.cell_focused == g.NavId;
+    st.cell_focused = 0;
+    const bool back = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight) || (!on_cell && ImGui::IsKeyPressed(ImGuiKey_Backspace));
     const bool up = any_pressed({ImGuiKey_UpArrow, ImGuiKey_GamepadDpadUp, ImGuiKey_GamepadLStickUp});
     const bool down = any_pressed({ImGuiKey_DownArrow, ImGuiKey_GamepadDpadDown, ImGuiKey_GamepadLStickDown});
     const bool left = any_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadLStickLeft});
