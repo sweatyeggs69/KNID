@@ -292,7 +292,8 @@ bool App::init_window() {
         ImGui::TextUnformatted("KNID " KNID_VERSION);
         ImGui::PushFont(theme::font_small());
         ImGui::TextColored(c.ink_muted, "%s", tr("An unofficial project. Not affiliated with Nintendo or HAL Laboratory."));
-        ImGui::TextColored(c.ink_muted, "https://github.com/sweatyeggs69/KNID");
+        if (ImGui::TextLink("https://github.com/sweatyeggs69/KNID")) SDL_OpenURL("https://github.com/sweatyeggs69/KNID");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Open in your browser"));
         ImGui::PopFont();
         auto block = [](const char* title, std::string_view text) {
             if (!ImGui::CollapsingHeader(title)) return;

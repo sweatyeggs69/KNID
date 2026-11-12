@@ -335,579 +335,583 @@ msgstr "Sobre"
 msgid "An unofficial project. Not affiliated with Nintendo or HAL Laboratory."
 msgstr "Um projeto não oficial. Sem vínculo com a Nintendo ou a HAL Laboratory."
 
-#: src/app/app.cpp:307
+#: src/app/app.cpp:296
+msgid "Open in your browser"
+msgstr "Abrir no navegador"
+
+#: src/app/app.cpp:308
 msgid "KNID license (MIT)"
 msgstr "Licença do KNID (MIT)"
 
-#: src/app/app.cpp:308
+#: src/app/app.cpp:309
 msgid "Third-party notices"
 msgstr "Avisos de terceiros"
 
-#: src/app/app.cpp:309
+#: src/app/app.cpp:310
 msgid "DM Sans font license (SIL OFL 1.1)"
 msgstr "Licença da fonte DM Sans (SIL OFL 1.1)"
 
-#: src/app/app.cpp:346
+#: src/app/app.cpp:347
 msgid "The saved ROM changed since it was chosen. Please choose it again."
 msgstr "A ROM salva mudou desde que foi escolhida. Escolha-a de novo."
 
-#: src/app/app.cpp:368
+#: src/app/app.cpp:369
 msgid "Game Boy Advance ROM"
 msgstr "ROM de Game Boy Advance"
 
-#: src/app/app.cpp:369
+#: src/app/app.cpp:370
 msgid "All files"
 msgstr "Todos os arquivos"
 
-#: src/app/app.cpp:401
+#: src/app/app.cpp:402
 msgid "The BIOS file is not the retail GBA BIOS; using the built-in BIOS."
 msgstr "O arquivo não é a BIOS original do GBA; usando a BIOS embutida."
 
-#: src/app/app.cpp:439
+#: src/app/app.cpp:440
 msgid "F1 or Esc: settings menu"
 msgstr "F1 ou Esc: menu de configurações"
 
-#: src/app/app.cpp:637
+#: src/app/app.cpp:638
 msgid "Kirby: Nightmare in Dream Land, native on your computer"
 msgstr "Kirby: Nightmare in Dream Land, nativo no seu computador"
 
-#: src/app/app.cpp:641
+#: src/app/app.cpp:642
 msgid "To play, choose your own copy of the game: a ROM file dumped from your cartridge of Kirby: Nightmare in Dream Land (USA)."
 msgstr "Para jogar, escolha sua própria cópia do jogo: um arquivo ROM extraído do seu cartucho de Kirby: Nightmare in Dream Land (USA)."
 
-#: src/app/app.cpp:644
+#: src/app/app.cpp:645
 msgid "KNID only remembers where the file is. It never copies, uploads or changes it."
 msgstr "O KNID só lembra onde o arquivo está. Ele nunca o copia, envia ou altera."
 
-#: src/app/app.cpp:650
+#: src/app/app.cpp:651
 msgid "Choose ROM..."
 msgstr "Escolher ROM..."
 
-#: src/app/app.cpp:659
+#: src/app/app.cpp:660
 msgid "Quit"
 msgstr "Sair"
 
-#: src/app/app.cpp:669
+#: src/app/app.cpp:670
 msgid "just now"
 msgstr "agora mesmo"
 
-#: src/app/app.cpp:670
+#: src/app/app.cpp:671
 msgid "1 minute ago"
 msgstr "há 1 minuto"
 
-#: src/app/app.cpp:670
+#: src/app/app.cpp:671
 msgid "{0} minutes ago"
 msgstr "há {0} minutos"
 
-#: src/app/app.cpp:671
+#: src/app/app.cpp:672
 msgid "1 hour ago"
 msgstr "há 1 hora"
 
-#: src/app/app.cpp:671
+#: src/app/app.cpp:672
 msgid "{0} hours ago"
 msgstr "há {0} horas"
 
-#: src/app/app.cpp:672
+#: src/app/app.cpp:673
 msgid "1 day ago"
 msgstr "há 1 dia"
 
-#: src/app/app.cpp:672
+#: src/app/app.cpp:673
 msgid "{0} days ago"
 msgstr "há {0} dias"
 
-#: src/app/app.cpp:682
+#: src/app/app.cpp:683
 msgid "Kirby: Nightmare in Dream Land (USA)"
 msgstr "Kirby: Nightmare in Dream Land (USA)"
 
-#: src/app/app.cpp:697
+#: src/app/app.cpp:698
 msgid "Resume"
 msgstr "Retomar"
 
-#: src/app/app.cpp:699
+#: src/app/app.cpp:700
 msgid "Restart"
 msgstr "Reiniciar"
 
-#: src/app/app.cpp:705
+#: src/app/app.cpp:706
 msgid "Continue"
 msgstr "Continuar"
 
-#: src/app/app.cpp:708
+#: src/app/app.cpp:709
 msgid "Play from the title screen"
 msgstr "Jogar a partir da tela de título"
 
-#: src/app/app.cpp:711
+#: src/app/app.cpp:712
 msgid "Play"
 msgstr "Jogar"
 
-#: src/app/app.cpp:715
+#: src/app/app.cpp:716
 msgid "Settings"
 msgstr "Configurações"
 
-#: src/app/app.cpp:745
+#: src/app/app.cpp:746
 msgid "ROM verified"
 msgstr "ROM verificada"
 
-#: src/app/app.cpp:747
+#: src/app/app.cpp:748
 msgid "Saved {0}"
 msgstr "Salvo {0}"
 
-#: src/app/app.cpp:820
+#: src/app/app.cpp:829
 msgid "unbound"
 msgstr "sem atalho"
 
-#: src/app/app.cpp:823
+#: src/app/app.cpp:832
 msgid "{0} save  {1} new  {2} load  {3}/{4} slot"
 msgstr "{0} salvar  {1} novo  {2} carregar  {3}/{4} espaço"
 
-#: src/app/app.cpp:826
+#: src/app/app.cpp:835
 msgid "save {0}; save to new slot {1}; load {2}; previous slot {3}; next slot {4}"
 msgstr "salvar {0}; salvar em novo espaço {1}; carregar {2}; espaço anterior {3}; próximo espaço {4}"
 
-#: src/app/app.cpp:857
+#: src/app/app.cpp:866
 msgid "Slot {0} overwritten"
 msgstr "Espaço {0} substituído"
 
-#: src/app/app.cpp:857
+#: src/app/app.cpp:866
 msgid "State saved to slot {0}"
 msgstr "Estado salvo no espaço {0}"
 
-#: src/app/app.cpp:859
+#: src/app/app.cpp:868
 msgid "Could not save the state"
 msgstr "Não foi possível salvar o estado"
 
-#: src/app/app.cpp:860
+#: src/app/app.cpp:869
 msgid "Overwrote {0}."
 msgstr "{0} substituído."
 
-#: src/app/app.cpp:860
+#: src/app/app.cpp:869
 msgid "Saved to {0}."
 msgstr "Salvo em {0}."
 
-#: src/app/app.cpp:873
+#: src/app/app.cpp:882
 msgid "All {0} slots are full. Delete one in the States tab, or save over the current slot."
 msgstr "Todos os {0} espaços estão cheios. Apague um na aba Estados ou salve sobre o espaço atual."
 
-#: src/app/app.cpp:875
+#: src/app/app.cpp:884
 msgid "No empty slot"
 msgstr "Nenhum espaço livre"
 
-#: src/app/app.cpp:902
+#: src/app/app.cpp:911
 msgid "{0} is empty."
 msgstr "{0} está vazio."
 
-#: src/app/app.cpp:913
+#: src/app/app.cpp:922
 msgid "Could not load the state"
 msgstr "Não foi possível carregar o estado"
 
-#: src/app/app.cpp:921
+#: src/app/app.cpp:930
 msgid "State loaded from slot {0}"
 msgstr "Estado carregado do espaço {0}"
 
-#: src/app/app.cpp:922
+#: src/app/app.cpp:931
 msgid "Loaded {0}."
 msgstr "{0} carregado."
 
-#: src/app/app.cpp:948
+#: src/app/app.cpp:957
 msgid "No ROM is chosen yet."
 msgstr "Nenhuma ROM foi escolhida ainda."
 
-#: src/app/app.cpp:963
+#: src/app/app.cpp:972
 msgid "Couldn't auto-load the save state"
 msgstr "Não foi possível carregar o estado automaticamente"
 
-#: src/app/app.cpp:963
+#: src/app/app.cpp:972
 msgid "Couldn't start the game"
 msgstr "Não foi possível iniciar o jogo"
 
-#: src/app/app.cpp:980
+#: src/app/app.cpp:989
 msgid "Choose your ROM first (Game tab)."
 msgstr "Escolha sua ROM primeiro (aba Jogo)."
 
-#: src/app/app.cpp:983
+#: src/app/app.cpp:992
 msgid "Shortcuts in game: {0}. Current: {1}. Change them in Controls."
 msgstr "Atalhos no jogo: {0}. Atual: {1}. Altere em Controles."
 
-#: src/app/app.cpp:986
+#: src/app/app.cpp:995
 msgid "Undo last load"
 msgstr "Desfazer o último carregamento"
 
-#: src/app/app.cpp:991
+#: src/app/app.cpp:1000
 msgid "Went back to before the last load."
 msgstr "Voltou para antes do último carregamento."
 
-#: src/app/app.cpp:996
+#: src/app/app.cpp:1005
 msgid "Show folder"
 msgstr "Mostrar pasta"
 
-#: src/app/app.cpp:999
+#: src/app/app.cpp:1008
 msgid "Save to new slot"
 msgstr "Salvar em novo espaço"
 
-#: src/app/app.cpp:1003
+#: src/app/app.cpp:1012
 msgid "Overwrite the current slot"
 msgstr "Substituir o espaço atual"
 
-#: src/app/app.cpp:1003
+#: src/app/app.cpp:1012
 msgid "Save to a new slot each time"
 msgstr "Salvar em um novo espaço a cada vez"
 
-#: src/app/app.cpp:1005
+#: src/app/app.cpp:1014
 msgid "Save state shortcut:"
 msgstr "Atalho de salvar estado:"
 
-#: src/app/app.cpp:1050
+#: src/app/app.cpp:1059
 msgid "Unusable"
 msgstr "Inutilizável"
 
-#: src/app/app.cpp:1050
+#: src/app/app.cpp:1059
 msgid "Empty"
 msgstr "Vazio"
 
-#: src/app/app.cpp:1069
+#: src/app/app.cpp:1078
 msgid "%b %d, %H:%M"
 msgstr "%d/%m, %H:%M"
 
-#: src/app/app.cpp:1070
+#: src/app/app.cpp:1079
 msgid "{0}  |  {1} played"
 msgstr "{0}  |  {1} jogado"
 
-#: src/app/app.cpp:1072
+#: src/app/app.cpp:1081
 msgid "No state saved yet"
 msgstr "Nenhum estado salvo ainda"
 
-#: src/app/app.cpp:1080
+#: src/app/app.cpp:1089
 msgid "Save"
 msgstr "Salvar"
 
-#: src/app/app.cpp:1084
+#: src/app/app.cpp:1093
 msgid "Load"
 msgstr "Carregar"
 
-#: src/app/app.cpp:1093
+#: src/app/app.cpp:1102
 msgid "Rename..."
 msgstr "Renomear..."
 
-#: src/app/app.cpp:1097
+#: src/app/app.cpp:1106
 msgid "Export..."
 msgstr "Exportar..."
 
-#: src/app/app.cpp:1100
+#: src/app/app.cpp:1109
 msgid "KNID save state"
 msgstr "Estado salvo do KNID"
 
-#: src/app/app.cpp:1110
+#: src/app/app.cpp:1119
 msgid "Import into this slot..."
 msgstr "Importar para este espaço..."
 
-#: src/app/app.cpp:1123
+#: src/app/app.cpp:1132
 msgid "Delete..."
 msgstr "Apagar..."
 
-#: src/app/app.cpp:1135
+#: src/app/app.cpp:1144
 msgid "Rename state"
 msgstr "Renomear estado"
 
-#: src/app/app.cpp:1137
+#: src/app/app.cpp:1146
 msgid "Label for {0}:"
 msgstr "Nome para {0}:"
 
-#: src/app/app.cpp:1151
+#: src/app/app.cpp:1160
 msgid "Delete state?"
 msgstr "Apagar o estado?"
 
-#: src/app/app.cpp:1153
+#: src/app/app.cpp:1162
 msgid "Delete {0}? It is moved to the Trash."
 msgstr "Apagar {0}? Ele vai para a lixeira."
 
-#: src/app/app.cpp:1154
+#: src/app/app.cpp:1163
 msgid "Delete"
 msgstr "Apagar"
 
-#: src/app/app.cpp:1157
+#: src/app/app.cpp:1166
 msgid "{0} moved to the Trash."
 msgstr "{0} foi para a lixeira."
 
-#: src/app/app.cpp:1178
+#: src/app/app.cpp:1187
 msgid "Could not read {0}"
 msgstr "Não foi possível ler {0}"
 
-#: src/app/app.cpp:1197
+#: src/app/app.cpp:1206
 msgid "Could not write the save file {0}"
 msgstr "Não foi possível gravar o arquivo de save {0}"
 
-#: src/app/app.cpp:1207
+#: src/app/app.cpp:1216
 msgid "Imported {0}."
 msgstr "{0} importado."
 
-#: src/app/app.cpp:1208
+#: src/app/app.cpp:1217
 msgid "Imported {0}. The previous save was backed up."
 msgstr "{0} importado. Foi feita uma cópia do save anterior."
 
-#: src/app/app.cpp:1209
+#: src/app/app.cpp:1218
 msgid "The game was restarted."
 msgstr "O jogo foi reiniciado."
 
-#: src/app/app.cpp:1220
+#: src/app/app.cpp:1229
 msgid "There is no save to export yet. Play the game first."
 msgstr "Ainda não há save para exportar. Jogue primeiro."
 
-#: src/app/app.cpp:1227
+#: src/app/app.cpp:1236
 msgid "Could not write {0}"
 msgstr "Não foi possível gravar {0}"
 
-#: src/app/app.cpp:1230
+#: src/app/app.cpp:1239
 msgid "Exported to {0} (raw 32 KiB, works in mGBA, VBA-M and RetroArch)."
 msgstr "Exportado para {0} (32 KiB bruto, funciona no mGBA, VBA-M e RetroArch)."
 
-#: src/app/app.cpp:1235
+#: src/app/app.cpp:1244
 msgid "Saves"
 msgstr "Saves"
 
-#: src/app/app.cpp:1238
+#: src/app/app.cpp:1247
 msgid "Show save folder"
 msgstr "Mostrar pasta de saves"
 
-#: src/app/app.cpp:1244
+#: src/app/app.cpp:1253
 msgid "Import save..."
 msgstr "Importar save..."
 
-#: src/app/app.cpp:1247
+#: src/app/app.cpp:1256
 msgid "Game saves"
 msgstr "Saves de jogo"
 
-#: src/app/app.cpp:1257
+#: src/app/app.cpp:1266
 msgid "Export save..."
 msgstr "Exportar save..."
 
-#: src/app/app.cpp:1260
+#: src/app/app.cpp:1269
 msgid "Game save"
 msgstr "Save de jogo"
 
-#: src/app/app.cpp:1270
+#: src/app/app.cpp:1279
 msgid "Restore backup..."
 msgstr "Restaurar cópia..."
 
-#: src/app/app.cpp:1273
+#: src/app/app.cpp:1282
 msgid "Imports .sav / .srm battery saves from mGBA, VBA-M, RetroArch and others."
 msgstr "Importa saves .sav / .srm do mGBA, VBA-M, RetroArch e outros."
 
-#: src/app/app.cpp:1281
+#: src/app/app.cpp:1290
 msgid "Replace your save?"
 msgstr "Substituir seu save?"
 
-#: src/app/app.cpp:1286
+#: src/app/app.cpp:1295
 msgid "Use {0} as your save?"
 msgstr "Usar {0} como seu save?"
 
-#: src/app/app.cpp:1288
+#: src/app/app.cpp:1297
 msgid "Your current save is backed up first (the last 10 are kept)."
 msgstr "Seu save atual é copiado antes (os 10 últimos são mantidos)."
 
-#: src/app/app.cpp:1290
+#: src/app/app.cpp:1299
 msgid "Importing restarts the game; unsaved progress is lost."
 msgstr "Importar reinicia o jogo; o progresso não salvo é perdido."
 
-#: src/app/app.cpp:1294
+#: src/app/app.cpp:1303
 msgid "Replace save"
 msgstr "Substituir save"
 
-#: src/app/app.cpp:1307
+#: src/app/app.cpp:1316
 msgid "Restore a backup"
 msgstr "Restaurar uma cópia"
 
-#: src/app/app.cpp:1313
+#: src/app/app.cpp:1322
 msgid "No backups yet. One is made every time a save is replaced."
 msgstr "Ainda não há cópias. Uma é feita sempre que um save é substituído."
 
-#: src/app/app.cpp:1326
+#: src/app/app.cpp:1335
 msgid "the backup from {0}"
 msgstr "a cópia de {0}"
 
-#: src/app/app.cpp:1326
+#: src/app/app.cpp:1335
 msgid "backup"
 msgstr "cópia"
 
-#: src/app/app.cpp:1350
+#: src/app/app.cpp:1359
 msgid "Kirby"
 msgstr "Kirby"
 
-#: src/app/app.cpp:1355
+#: src/app/app.cpp:1364
 msgid "Unlimited health"
 msgstr "Vida ilimitada"
 
-#: src/app/app.cpp:1355
+#: src/app/app.cpp:1364
 msgid "Health stays full, so damage never drains it."
 msgstr "A vida fica cheia, então o dano nunca a reduz."
 
-#: src/app/app.cpp:1356
+#: src/app/app.cpp:1365
 msgid "Unlimited lives"
 msgstr "Vidas ilimitadas"
 
-#: src/app/app.cpp:1356
+#: src/app/app.cpp:1365
 msgid "Lives stay at 9 or more."
 msgstr "As vidas ficam em 9 ou mais."
 
-#: src/app/app.cpp:1357
+#: src/app/app.cpp:1366
 msgid "Invincibility"
 msgstr "Invencibilidade"
 
-#: src/app/app.cpp:1357
+#: src/app/app.cpp:1366
 msgid "Enemies and hazards pass through Kirby. Falling into a pit still costs a life."
 msgstr "Inimigos e perigos atravessam Kirby. Cair num buraco ainda custa uma vida."
 
-#: src/app/app.cpp:1368
+#: src/app/app.cpp:1377
 msgid "Off"
 msgstr "Desligado"
 
-#: src/app/app.cpp:1372
+#: src/app/app.cpp:1381
 msgid "Copy ability:"
 msgstr "Habilidade:"
 
-#: src/app/app.cpp:1382
+#: src/app/app.cpp:1391
 msgid "Kirby always has this ability, even after a hit or swallowing an enemy."
 msgstr "Kirby sempre tem esta habilidade, mesmo depois de levar um golpe ou engolir um inimigo."
 
-#: src/app/app.cpp:1388
+#: src/app/app.cpp:1397
 msgid "Cheats are off while RetroAchievements hardcore mode is on."
 msgstr "As trapaças ficam desligadas no modo hardcore do RetroAchievements."
 
-#: src/app/app.cpp:1389
+#: src/app/app.cpp:1398
 msgid "Cheats work inside levels only and never change your save file. They stay on until you turn them off."
 msgstr "As trapaças só funcionam dentro das fases e nunca alteram seu save. Ficam ativas até você desligá-las."
 
-#: src/app/app.cpp:1396
+#: src/app/app.cpp:1405
 msgid "Game ROM"
 msgstr "ROM do jogo"
 
-#: src/app/app.cpp:1398
+#: src/app/app.cpp:1407
 msgid "Kirby: Nightmare in Dream Land (USA), verified"
 msgstr "Kirby: Nightmare in Dream Land (USA), verificada"
 
-#: src/app/app.cpp:1408
+#: src/app/app.cpp:1417
 msgid "No ROM chosen"
 msgstr "Nenhuma ROM escolhida"
 
-#: src/app/app.cpp:1410
+#: src/app/app.cpp:1419
 msgid "Change ROM..."
 msgstr "Trocar ROM..."
 
-#: src/app/app.cpp:1417
+#: src/app/app.cpp:1426
 msgid "Startup"
 msgstr "Inicialização"
 
-#: src/app/app.cpp:1419
+#: src/app/app.cpp:1428
 msgid "Auto-load save state on launch"
 msgstr "Carregar o estado ao abrir"
 
-#: src/app/app.cpp:1420
+#: src/app/app.cpp:1429
 msgid "Opening KNID goes straight back to where you left off (your most recent save state)."
 msgstr "Ao abrir, o KNID volta direto para onde você parou (seu estado mais recente)."
 
-#: src/app/app.cpp:1421
+#: src/app/app.cpp:1430
 msgid "Hold Shift while opening KNID to see this menu instead."
 msgstr "Segure Shift ao abrir o KNID para ver este menu."
 
-#: src/app/app.cpp:1425
+#: src/app/app.cpp:1434
 msgid "BIOS (optional)"
 msgstr "BIOS (opcional)"
 
-#: src/app/app.cpp:1431
+#: src/app/app.cpp:1440
 msgid "The BIOS file could not be read; using the built-in BIOS."
 msgstr "Não foi possível ler o arquivo da BIOS; usando a BIOS embutida."
 
-#: src/app/app.cpp:1434
+#: src/app/app.cpp:1443
 msgid "Built-in BIOS. No file is needed."
 msgstr "BIOS embutida. Nenhum arquivo é necessário."
 
-#: src/app/app.cpp:1438
+#: src/app/app.cpp:1447
 msgid "Retail GBA BIOS verified: the Game Boy logo plays when the game starts, and the game runs on this BIOS."
 msgstr "BIOS original do GBA verificada: o logo do Game Boy aparece ao iniciar e o jogo roda nesta BIOS."
 
-#: src/app/app.cpp:1443
+#: src/app/app.cpp:1452
 msgid "Use a BIOS file..."
 msgstr "Usar um arquivo de BIOS..."
 
-#: src/app/app.cpp:1443
+#: src/app/app.cpp:1452
 msgid "Use the built-in BIOS"
 msgstr "Usar a BIOS embutida"
 
-#: src/app/app.cpp:1448
+#: src/app/app.cpp:1457
 msgid "Takes effect the next time the game starts."
 msgstr "Vale a partir da próxima vez que o jogo iniciar."
 
-#: src/app/app.cpp:1450
+#: src/app/app.cpp:1459
 msgid "Shortcut"
 msgstr "Atalho"
 
-#: src/app/app.cpp:1451
+#: src/app/app.cpp:1460
 msgid "A shortcut starts the game directly, skipping the launcher."
 msgstr "Um atalho inicia o jogo direto, sem passar pelo iniciador."
 
-#: src/app/app.cpp:1458
+#: src/app/app.cpp:1467
 msgid "Applications"
 msgstr "Aplicativos"
 
-#: src/app/app.cpp:1460
+#: src/app/app.cpp:1469
 msgid "Start menu"
 msgstr "menu Iniciar"
 
-#: src/app/app.cpp:1462
+#: src/app/app.cpp:1471
 msgid "applications menu"
 msgstr "menu de aplicativos"
 
-#: src/app/app.cpp:1473
+#: src/app/app.cpp:1482
 msgid "Desktop"
 msgstr "Área de trabalho"
 
-#: src/app/app.cpp:1475
+#: src/app/app.cpp:1484
 msgid "Update {0} shortcut"
 msgstr "Atualizar atalho ({0})"
 
-#: src/app/app.cpp:1475
+#: src/app/app.cpp:1484
 msgid "Add to {0}"
 msgstr "Adicionar a {0}"
 
-#: src/app/app.cpp:1482
+#: src/app/app.cpp:1491
 msgid "Remove shortcut"
 msgstr "Remover atalho"
 
-#: src/app/app.cpp:1492
+#: src/app/app.cpp:1501
 msgid "Replace existing item?"
 msgstr "Substituir o item existente?"
 
-#: src/app/app.cpp:1497
+#: src/app/app.cpp:1506
 msgid "already exists and was not made by KNID."
 msgstr "já existe e não foi criado pelo KNID."
 
-#: src/app/app.cpp:1498
+#: src/app/app.cpp:1507
 msgid "Replace it? The existing item is moved to the Trash."
 msgstr "Substituir? O item existente vai para a lixeira."
 
-#: src/app/app.cpp:1499
+#: src/app/app.cpp:1508
 msgid "Replace"
 msgstr "Substituir"
 
-#: src/app/app.cpp:1504
+#: src/app/app.cpp:1513
 msgid "Keep it"
 msgstr "Manter"
 
-#: src/app/app.cpp:1505
+#: src/app/app.cpp:1514
 msgid "Left the existing item alone."
 msgstr "O item existente não foi alterado."
 
-#: src/app/app.cpp:1611
+#: src/app/app.cpp:1620
 msgid "Exported {0}."
 msgstr "{0} exportado."
 
-#: src/app/app.cpp:1618
+#: src/app/app.cpp:1627
 msgid "Imported into {0}."
 msgstr "Importado para {0}."
 
-#: src/app/app.cpp:1627
+#: src/app/app.cpp:1636
 msgid "Could not read that BIOS file."
 msgstr "Não foi possível ler esse arquivo de BIOS."
 
-#: src/app/app.cpp:1629
+#: src/app/app.cpp:1638
 msgid "BIOS set. It is used the next time the game starts."
 msgstr "BIOS definida. Ela será usada na próxima vez que o jogo iniciar."
 
@@ -1035,7 +1039,7 @@ msgstr "Esse estado foi feito com outra ROM."
 msgid "There is nothing to undo."
 msgstr "Não há nada para desfazer."
 
-#: src/app/theme.cpp:291
+#: src/app/theme.cpp:292
 msgid "None"
 msgstr "Nenhuma"
 
