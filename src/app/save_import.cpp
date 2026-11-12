@@ -7,8 +7,12 @@
 #include <fstream>
 #include <system_error>
 
+#include "app/i18n.h"
+
 namespace knid {
 namespace fs = std::filesystem;
+using i18n::tr;
+using i18n::trf;
 
 namespace {
 
@@ -51,8 +55,8 @@ NormalizedSave normalize_save(const std::vector<std::uint8_t>& file, const std::
     };
     if (is_state_extension(ext) || starts_with("RASTATE", 7) || starts_with("\x89PNG", 4) ||
         starts_with("RZIP", 4)) {
-        r.error = "That is a save state, not a battery save. Save states from other emulators can't be "
-                  "imported; use the in-game save file instead (.sav or .srm).";
+        r.error = tr("That is a save state, not a battery save. Save states from other emulators can't be "
+                     "imported; use the in-game save file instead (.sav or .srm).");
         return r;
     }
 
@@ -88,31 +92,31 @@ NormalizedSave normalize_save(const std::vector<std::uint8_t>& file, const std::
         for (std::size_t off = 0; off < tail_len && mirror; off += kSramSize)
             mirror = std::memcmp(tail + off, buf.data(), kSramSize) == 0;
         if (!padding && !mirror) {
-            r.error = "This save is " + std::to_string(b2 / 1024) +
-                      " KiB and its extra data is not padding. It is probably a Flash save from another "
-                      "game; this game uses 32 KiB SRAM.";
+            r.error = trf("This save is {0} KiB and its extra data is not padding. It is probably a Flash save from "
+                          "another game; this game uses 32 KiB SRAM.",
+                          b2 / 1024);
             return r;
         }
         buf.resize(kSramSize);
         r.format += std::to_string(b2 / 1024) + " KiB save (" + (mirror ? "mirrored" : "padded") +
                     "), first 32 KiB used";
     } else if (size == 512 || size == 8192 || (size > 512 && size <= 8192 + 64 && base_size(8192))) {
-        r.error = "This looks like an EEPROM save (" + std::to_string(size) +
-                  " bytes). Kirby: Nightmare in Dream Land uses 32 KiB SRAM, so it is from another game.";
+        r.error = trf("This looks like an EEPROM save ({0} bytes). Kirby: Nightmare in Dream Land uses 32 KiB SRAM, "
+                      "so it is from another game.",
+                      size);
         return r;
     } else if (size == 0) {
-        r.error = "The file is empty.";
+        r.error = tr("The file is empty.");
         return r;
     } else {
-        r.error = "Unrecognized save size (" + std::to_string(size) +
-                  " bytes). Expected a 32 KiB SRAM save (.sav or .srm).";
+        r.error = trf("Unrecognized save size ({0} bytes). Expected a 32 KiB SRAM save (.sav or .srm).", size);
         return r;
     }
 
     if (all_equal(buf.data(), buf.size(), 0xFF) || all_equal(buf.data(), buf.size(), 0x00)) {
-        r.warning = "This save is blank, so importing it starts the game with no progress.";
+        r.warning = tr("This save is blank, so importing it starts the game with no progress.");
     } else if (!has_kirby_header(buf)) {
-        r.error = "This save doesn't belong to Kirby: Nightmare in Dream Land (its game header is missing).";
+        r.error = tr("This save doesn't belong to Kirby: Nightmare in Dream Land (its game header is missing).");
         return r;
     }
     r.data = std::move(buf);

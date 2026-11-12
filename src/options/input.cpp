@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <cstdlib>
 
+#include "app/i18n.h"
 #include "app/states.h"
 
 namespace knid::input {
+using i18n::tr;
+using i18n::trf;
 
 namespace {
 // Order the remap walks through, D-pad first like most setup screens.
@@ -41,12 +44,12 @@ const char* name(Button b) {
     switch (b) {
         case Button::A: return "A";
         case Button::B: return "B";
-        case Button::Select: return "Select";
-        case Button::Start: return "Start";
-        case Button::Right: return "Right";
-        case Button::Left: return "Left";
-        case Button::Up: return "Up";
-        case Button::Down: return "Down";
+        case Button::Select: return N_("Select");
+        case Button::Start: return N_("Start");
+        case Button::Right: return N_("Right");
+        case Button::Left: return N_("Left");
+        case Button::Up: return N_("Up");
+        case Button::Down: return N_("Down");
         case Button::R: return "R";
         case Button::L: return "L";
         default: return "?";
@@ -75,64 +78,64 @@ std::string display_name(const Binding& b) {
     switch (b.kind) {
         case Binding::Kind::Key: {
             switch (SDL_Scancode(b.code)) {
-                case SDL_SCANCODE_UP: return "Up Arrow";
-                case SDL_SCANCODE_DOWN: return "Down Arrow";
-                case SDL_SCANCODE_LEFT: return "Left Arrow";
-                case SDL_SCANCODE_RIGHT: return "Right Arrow";
-                case SDL_SCANCODE_RETURN: return "Enter";
-                case SDL_SCANCODE_KP_ENTER: return "Keypad Enter";
-                case SDL_SCANCODE_SPACE: return "Space";
-                case SDL_SCANCODE_PAGEUP: return "Page Up";
-                case SDL_SCANCODE_PAGEDOWN: return "Page Down";
+                case SDL_SCANCODE_UP: return tr("Up Arrow");
+                case SDL_SCANCODE_DOWN: return tr("Down Arrow");
+                case SDL_SCANCODE_LEFT: return tr("Left Arrow");
+                case SDL_SCANCODE_RIGHT: return tr("Right Arrow");
+                case SDL_SCANCODE_RETURN: return tr("Enter");
+                case SDL_SCANCODE_KP_ENTER: return tr("Keypad Enter");
+                case SDL_SCANCODE_SPACE: return tr("Space");
+                case SDL_SCANCODE_PAGEUP: return tr("Page Up");
+                case SDL_SCANCODE_PAGEDOWN: return tr("Page Down");
 #ifdef __APPLE__
-                case SDL_SCANCODE_LGUI: return "Left Command";
-                case SDL_SCANCODE_RGUI: return "Right Command";
-                case SDL_SCANCODE_LALT: return "Left Option";
-                case SDL_SCANCODE_RALT: return "Right Option";
+                case SDL_SCANCODE_LGUI: return tr("Left Command");
+                case SDL_SCANCODE_RGUI: return tr("Right Command");
+                case SDL_SCANCODE_LALT: return tr("Left Option");
+                case SDL_SCANCODE_RALT: return tr("Right Option");
 #elif defined(_WIN32)
-                case SDL_SCANCODE_LGUI: return "Left Windows";
-                case SDL_SCANCODE_RGUI: return "Right Windows";
+                case SDL_SCANCODE_LGUI: return tr("Left Windows");
+                case SDL_SCANCODE_RGUI: return tr("Right Windows");
 #endif
                 default: break;
             }
             const char* n = SDL_GetScancodeName(SDL_Scancode(b.code));
-            return n && *n ? n : "Key " + std::to_string(b.code);
+            return n && *n ? std::string(n) : trf("Key {0}", b.code);
         }
         case Binding::Kind::PadButton:
             switch (SDL_GamepadButton(b.code)) {
-                case SDL_GAMEPAD_BUTTON_SOUTH: return "A Button";
-                case SDL_GAMEPAD_BUTTON_EAST: return "B Button";
-                case SDL_GAMEPAD_BUTTON_WEST: return "X Button";
-                case SDL_GAMEPAD_BUTTON_NORTH: return "Y Button";
-                case SDL_GAMEPAD_BUTTON_BACK: return "Back Button";
-                case SDL_GAMEPAD_BUTTON_GUIDE: return "Home Button";
-                case SDL_GAMEPAD_BUTTON_START: return "Start Button";
-                case SDL_GAMEPAD_BUTTON_LEFT_STICK: return "Left Stick Press";
-                case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return "Right Stick Press";
-                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return "Left Bumper";
-                case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return "Right Bumper";
-                case SDL_GAMEPAD_BUTTON_DPAD_UP: return "Up D-Pad";
-                case SDL_GAMEPAD_BUTTON_DPAD_DOWN: return "Down D-Pad";
-                case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return "Left D-Pad";
-                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return "Right D-Pad";
-                case SDL_GAMEPAD_BUTTON_MISC1: return "Share Button";
-                case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1: return "Right Paddle 1";
-                case SDL_GAMEPAD_BUTTON_LEFT_PADDLE1: return "Left Paddle 1";
-                case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2: return "Right Paddle 2";
-                case SDL_GAMEPAD_BUTTON_LEFT_PADDLE2: return "Left Paddle 2";
-                case SDL_GAMEPAD_BUTTON_TOUCHPAD: return "Touchpad Press";
-                default: return "Controller Button " + std::to_string(b.code);
+                case SDL_GAMEPAD_BUTTON_SOUTH: return tr("A Button");
+                case SDL_GAMEPAD_BUTTON_EAST: return tr("B Button");
+                case SDL_GAMEPAD_BUTTON_WEST: return tr("X Button");
+                case SDL_GAMEPAD_BUTTON_NORTH: return tr("Y Button");
+                case SDL_GAMEPAD_BUTTON_BACK: return tr("Back Button");
+                case SDL_GAMEPAD_BUTTON_GUIDE: return tr("Home Button");
+                case SDL_GAMEPAD_BUTTON_START: return tr("Start Button");
+                case SDL_GAMEPAD_BUTTON_LEFT_STICK: return tr("Left Stick Press");
+                case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return tr("Right Stick Press");
+                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return tr("Left Bumper");
+                case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return tr("Right Bumper");
+                case SDL_GAMEPAD_BUTTON_DPAD_UP: return tr("Up D-Pad");
+                case SDL_GAMEPAD_BUTTON_DPAD_DOWN: return tr("Down D-Pad");
+                case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return tr("Left D-Pad");
+                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return tr("Right D-Pad");
+                case SDL_GAMEPAD_BUTTON_MISC1: return tr("Share Button");
+                case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1: return tr("Right Paddle 1");
+                case SDL_GAMEPAD_BUTTON_LEFT_PADDLE1: return tr("Left Paddle 1");
+                case SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2: return tr("Right Paddle 2");
+                case SDL_GAMEPAD_BUTTON_LEFT_PADDLE2: return tr("Left Paddle 2");
+                case SDL_GAMEPAD_BUTTON_TOUCHPAD: return tr("Touchpad Press");
+                default: return trf("Controller Button {0}", b.code);
             }
         case Binding::Kind::PadAxis: {
             const bool neg = b.dir < 0;
             switch (SDL_GamepadAxis(b.code)) {
-                case SDL_GAMEPAD_AXIS_LEFTX: return neg ? "Left Stick Left" : "Left Stick Right";
-                case SDL_GAMEPAD_AXIS_LEFTY: return neg ? "Left Stick Up" : "Left Stick Down";
-                case SDL_GAMEPAD_AXIS_RIGHTX: return neg ? "Right Stick Left" : "Right Stick Right";
-                case SDL_GAMEPAD_AXIS_RIGHTY: return neg ? "Right Stick Up" : "Right Stick Down";
-                case SDL_GAMEPAD_AXIS_LEFT_TRIGGER: return "Left Trigger";
-                case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: return "Right Trigger";
-                default: return "Controller Axis " + std::to_string(b.code) + (neg ? "-" : "+");
+                case SDL_GAMEPAD_AXIS_LEFTX: return neg ? tr("Left Stick Left") : tr("Left Stick Right");
+                case SDL_GAMEPAD_AXIS_LEFTY: return neg ? tr("Left Stick Up") : tr("Left Stick Down");
+                case SDL_GAMEPAD_AXIS_RIGHTX: return neg ? tr("Right Stick Left") : tr("Right Stick Right");
+                case SDL_GAMEPAD_AXIS_RIGHTY: return neg ? tr("Right Stick Up") : tr("Right Stick Down");
+                case SDL_GAMEPAD_AXIS_LEFT_TRIGGER: return tr("Left Trigger");
+                case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: return tr("Right Trigger");
+                default: return trf("Controller Axis {0}", std::to_string(b.code) + (neg ? "-" : "+"));
             }
         }
     }
@@ -184,11 +187,11 @@ bool parse(const std::string& text, Binding& out, bool hotkey) {
 
 const char* name(Hotkey h) {
     switch (h) {
-        case Hotkey::SaveState: return "Save state";
-        case Hotkey::SaveNewSlot: return "Save to new slot";
-        case Hotkey::LoadState: return "Load state";
-        case Hotkey::SlotPrev: return "Previous slot";
-        case Hotkey::SlotNext: return "Next slot";
+        case Hotkey::SaveState: return N_("Save state");
+        case Hotkey::SaveNewSlot: return N_("Save to new slot");
+        case Hotkey::LoadState: return N_("Load state");
+        case Hotkey::SlotPrev: return N_("Previous slot");
+        case Hotkey::SlotNext: return N_("Next slot");
         default: return "?";
     }
 }
@@ -503,7 +506,7 @@ void Manager::clear(Hotkey h, Source source) {
                               [&](const Chord& c) { return !c.empty() && matches(source, c.front()); }),
                list.end());
     save();
-    message_ = std::string(name(h)) + " unbound";
+    message_ = trf("{0} unbound", tr(name(h)));
 }
 
 void Manager::clear(Button b, Source source) {
@@ -512,7 +515,7 @@ void Manager::clear(Button b, Source source) {
     list.erase(std::remove_if(list.begin(), list.end(), [&](const Binding& x) { return matches(source, x); }),
                list.end());
     save();
-    message_ = std::string(name(b)) + ": " + describe(b);
+    message_ = std::string(tr(name(b))) + ": " + describe(b);
 }
 
 void Manager::cancel_remap() {
@@ -522,7 +525,7 @@ void Manager::cancel_remap() {
     hotkey_remap_ = Hotkey::Count;
     capture_.clear();
     config_ = load(io_);  // drop unsaved changes
-    message_ = "Remap cancelled";
+    message_ = tr("Remap cancelled");
 }
 
 void Manager::reload() {
@@ -540,26 +543,25 @@ void Manager::start_remap() {
             if (std::abs(int(SDL_GetGamepadAxis(p, SDL_GamepadAxis(a)))) > threshold) centered = false;
         axis_armed_[a] = centered;
     }
-    message_ = "Rebinding controls. Esc keeps the current binding.";
+    message_ = tr("Rebinding controls. Esc keeps the current binding.");
 }
 
 std::string Manager::remap_prompt() const {
     if (!remapping()) return {};
-    const char* what = remap_source_ == Source::Keyboard ? "Press a key"
-                       : remap_source_ == Source::Controller ? "Press a controller button"
+    const char* what = remap_source_ == Source::Keyboard ? N_("Press a key for {0}  (now: {1})")
+                       : remap_source_ == Source::Controller ? N_("Press a controller button for {0}  (now: {1})")
                                                               : nullptr;
-    auto now = [&](std::string d) { return "  (now: " + d + ")"; };
     if (what) {
         if (hotkey_remap_ != Hotkey::Count)
-            return std::string(what) + " for " + name(hotkey_remap_) + now(describe(hotkey_remap_, remap_source_));
+            return trf(what, tr(name(hotkey_remap_)), describe(hotkey_remap_, remap_source_));
         const Button b = kRemapOrder[remap_index_];
-        return std::string(what) + " for " + name(b) + now(describe(b, remap_source_));
+        return trf(what, tr(name(b)), describe(b, remap_source_));
     }
     if (hotkey_remap_ != Hotkey::Count)
-        return std::string("Press a key or controller button(s) for ") + name(hotkey_remap_) +
-               "  (now: " + describe(hotkey_remap_) + ")";
+        return trf("Press a key or controller button(s) for {0}  (now: {1})", tr(name(hotkey_remap_)),
+                   describe(hotkey_remap_));
     const Button b = kRemapOrder[remap_index_];
-    return std::string("Press a key or pad button for ") + name(b) + "  (now: " + describe(b) + ")";
+    return trf("Press a key or pad button for {0}  (now: {1})", tr(name(b)), describe(b));
 }
 
 void Manager::assign(const Binding& bind) {
@@ -587,7 +589,7 @@ void Manager::advance() {
         remap_index_ = -1;
         remap_single_ = false;
         save();
-        message_ = "Controls saved";
+        message_ = tr("Controls saved");
     }
 }
 
@@ -609,7 +611,7 @@ void Manager::assign_hotkey(const Chord& chord) {
                list.end());
     list.insert(list.begin(), chord);
     save();
-    message_ = std::string(name(target)) + ": " + describe(target);
+    message_ = std::string(tr(name(target))) + ": " + describe(target);
 }
 
 void Manager::fire(Hotkey h) {
@@ -629,7 +631,7 @@ void Manager::reset_to_defaults() {
     capture_.clear();
     config_ = default_config();
     save();
-    message_ = "Controls reset to defaults";
+    message_ = tr("Controls reset to defaults");
 }
 
 std::string Manager::describe(Button b, Source source) const {
@@ -639,7 +641,7 @@ std::string Manager::describe(Button b, Source source) const {
         if (!s.empty()) s += ", ";
         s += display_name(bind);
     }
-    return s.empty() ? "None" : s;
+    return s.empty() ? std::string(tr("None")) : s;
 }
 
 std::string Manager::describe(Hotkey h, Source source) const {
@@ -651,7 +653,7 @@ std::string Manager::describe(Hotkey h, Source source) const {
         for (const auto& b : c) part += (part.empty() ? "" : " + ") + display_name(b);  // "Back Button + Right Bumper"
         s += part;
     }
-    return s.empty() ? "None" : s;
+    return s.empty() ? std::string(tr("None")) : s;
 }
 
 std::string Manager::take_message() {
@@ -668,7 +670,7 @@ bool Manager::handle_event(const SDL_Event& e) {
             if (SDL_Gamepad* p = SDL_OpenGamepad(e.gdevice.which)) {
                 pads_.push_back(p);
                 const char* n = SDL_GetGamepadName(p);
-                message_ = std::string("Controller connected: ") + (n ? n : "gamepad");
+                message_ = trf("Controller connected: {0}", n ? n : tr("gamepad"));
             }
             return false;
         case SDL_EVENT_GAMEPAD_REMOVED:
@@ -676,7 +678,7 @@ bool Manager::handle_event(const SDL_Event& e) {
                 if (SDL_GetGamepadID(*it) == e.gdevice.which) {
                     SDL_CloseGamepad(*it);
                     pads_.erase(it);
-                    message_ = "Controller disconnected";
+                    message_ = tr("Controller disconnected");
                     break;
                 }
             return false;
