@@ -19,57 +19,81 @@
 
 > [!IMPORTANT]
 > KNID does not include the game. You need your own legally dumped ROM of
-> **Kirby: Nightmare in Dream Land (USA)**, which KNID checks before playing.
-> KNID is an unofficial fan project. It is not affiliated with, endorsed or sponsored by Nintendo
-> or HAL Laboratory. Kirby and all related names are trademarks of their respective owners.
+> **Kirby: Nightmare in Dream Land (USA)**. KNID is an unofficial fan project, not affiliated with, endorsed or
+> sponsored by Nintendo
+or HAL Laboratory. Kirby and all related names are trademarks of their respective owners.
 
 ## Download
+
 <a href="https://recomplauncher.com/game/knid"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg"></a>
 
-Get the latest version from the [Releases page](https://github.com/sweatyeggs69/KNID/releases/latest).
+Or get the latest version for your system from the [Releases page](https://github.com/sweatyeggs69/KNID/releases/latest).
 
 ## Getting started
 
-1. **Download** KNID for your system and open it.
-2. **Choose your ROM.** Click **Choose ROM...** and pick your dump. KNID only remembers where the
-   file is; it never copies, uploads or changes it.
-3. **Play.** Press **Play**. To start the game directly next time, add a shortcut in **Settings > Game**.
+1. **Open KNID** and click **Choose ROM...** to pick your dump. Only the USA release (game code
+   `A7KE`, revision 0) is supported; other regions, revisions, hacks and damaged dumps are refused.
+   KNID only remembers where the file is. It never copies, uploads or changes it.
+2. **BIOS (optional).** No BIOS is needed. If you own a GBA BIOS dump, pick it in Settings > Game > BIOS
+   to see the original boot animation.
+3. **Press Play.** Next time, **Continue** picks up where you left off.
+
+## Controls
+
+| GBA      | Keyboard                  | Controller                        |
+| -------- | ------------------------- | --------------------------------- |
+| D-pad    | Arrow keys                | D-pad or left stick               |
+| A        | X                         | A (bottom) or Y (top) face button |
+| B        | Z                         | B (right) or X (left) face button |
+| L / R    | A / S                     | Shoulder buttons or triggers      |
+| Start    | Enter                     | Start                             |
+| Select   | Backspace or Right Shift  | Back                              |
+
+| Shortcut                | Keyboard            | Controller                |
+| ----------------------- | ------------------- | ------------------------- |
+| Settings menu           | F1 or Esc           |                           |
+| Fullscreen              | F11                 |                           |
+| Save state / load state | Page Up / Page Down | Back + R / Back + L       |
+| Save to a new slot      | F9                  | Back + D-pad Up           |
+| Previous / next slot    | F6 / F7             | Back + D-pad Left / Right |
+| Fast forward (hold)     | Tab                 | Right stick click         |
+| Rewind (hold)           | `` ` `` (backtick)    | Left stick click          |
+
+Everything except F1, Esc and F11 can be rebound in F1 > Controls.
 
 ## Features
 
-- **Native on macOS, Windows and Linux**, with smooth, tear-free video and sound.
-- **Themed launcher** with your game's title screen behind it and **Continue** to pick up where you left off.
-- **One settings menu (F1)** for display (scaling, widescreen, screen effects) and controls.
-- **Controllers and remapping** for keyboard and gamepads.
-- **Save states**: ten slots with thumbnails, quick save/load (to Slot 1 unless you pick another),
-  save to a new slot, and
-  optional auto-load on launch.
-- **Fast forward and rewind**: hold Tab to speed up (2x or 4x), hold ` to rewind the last 10 seconds. Both rebindable in F1 > Controls; rewind is off in RetroAchievements hardcore mode.
-- **Cheats** (F1 > Cheats): unlimited health and lives, invincibility, and a fixed copy ability. Off in RetroAchievements hardcore mode.
+- **Settings menu (F1)** for display (scaling, 16:10 and 16:9 widescreen, screen effects), controls and more.
+- **Keyboard and controllers**, with full remapping.
+- **Save states**: ten slots with thumbnails. Quick save and load use Slot 1 unless you pick another.
+- **Fast forward and rewind**: fast forward at 2x or 4x, rewind up to the last 10 seconds.
+- **Cheats** (F1 > Cheats): unlimited health and lives, invincibility, and a fixed copy ability.
+- **RetroAchievements**, optional. Cheats, mods and rewind are off in hardcore mode.
 - **Import saves** from RetroArch, mGBA, VBA-M and others.
-- **RetroAchievements**, optional: sign in to earn achievements.
-- **Automatic updates** with your OK, without touching your saves.
-- **Optional BIOS** with the original boot animation (not required).
-- **One-click shortcut** to start the game directly.
-- **Works with [RecompLauncher](https://recomplauncher.com)**.
+- **Desktop shortcut** that starts the game directly (Settings > Game > Shortcut).
+- **Automatic updates** from this repository's releases, with your OK, without touching your saves.
 
-## FAQ
+## Saves
 
-**Which version of the game is supported?**
-Kirby: Nightmare in Dream Land, USA release (game code `A7KE`, revision 0).
+Saves, save states and settings live in your user folder, never inside the app:
 
-**KNID says my ROM isn't the supported dump.**
-Other regions, revisions, hacks and damaged dumps are refused so saves and settings always work.
-Dump your USA cartridge again and pick that file.
+- macOS: `~/Library/Application Support/KNID/KNID/`
+- Windows: `%APPDATA%\KNID\KNID\`
+- Linux: `~/.local/share/KNID/KNID/`
 
-**Do I need a GBA BIOS?**
-No. KNID has a built-in replacement. If you own a BIOS dump, Settings > Game > BIOS shows the
-original boot animation.
+Settings > States > **Show save folder** opens it.
 
-**Where are my saves?**
-In your user folder, never inside the app: `~/Library/Application Support/KNID/KNID/` (macOS),
-`%APPDATA%\KNID\KNID\` (Windows) or `~/.local/share/KNID/KNID/` (Linux). Settings > Game >
-Saves > **Show save folder** opens it.
+## Building from source
+
+You need CMake 3.24 or newer and a C++20 compiler. SDL3, Dear ImGui and the other libraries are
+downloaded during configure. On Linux, install SDL3's usual build packages first (the Linux job in
+[build.yml](.github/workflows/build.yml) lists them).
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/knid
+```
 
 ## Contributing
 
