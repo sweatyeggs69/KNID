@@ -167,6 +167,7 @@ if(TARGET SDL3::SDL3)
         src/options/options_panel.cpp
         src/options/presenter.cpp
         src/options/input.cpp
+        src/options/menu_pad.cpp
     )
     target_include_directories(knid_options PUBLIC src)
     target_link_libraries(knid_options PUBLIC imgui knid_display knid_app knid_states SDL3::SDL3)
