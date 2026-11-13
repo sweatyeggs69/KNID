@@ -189,6 +189,9 @@ const char* name(Hotkey h) {
         case Hotkey::LoadState: return "Load state";
         case Hotkey::SlotPrev: return "Previous slot";
         case Hotkey::SlotNext: return "Next slot";
+        case Hotkey::FastForward: return "Fast forward (hold)";
+        case Hotkey::FastForwardToggle: return "Fast forward (toggle)";
+        case Hotkey::Rewind: return "Rewind (hold)";
         default: return "?";
     }
 }
@@ -200,6 +203,9 @@ const char* key_name(Hotkey h) {
         case Hotkey::LoadState: return "load_state";
         case Hotkey::SlotPrev: return "slot_prev";
         case Hotkey::SlotNext: return "slot_next";
+        case Hotkey::FastForward: return "fast_forward";
+        case Hotkey::FastForwardToggle: return "fast_forward_toggle";
+        case Hotkey::Rewind: return "rewind";
         default: return "?";
     }
 }
@@ -287,6 +293,10 @@ Config default_config() {
     hk(Hotkey::LoadState) = {{key(SDL_SCANCODE_PAGEDOWN)}, {back, pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)}};
     hk(Hotkey::SlotPrev) = {{key(SDL_SCANCODE_F6)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_LEFT)}};
     hk(Hotkey::SlotNext) = {{key(SDL_SCANCODE_F7)}, {back, pad(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)}};
+    // Hold Tab or click the right stick to fast forward; hold ` (above Tab) or click the left
+    // stick to rewind. The toggle starts unbound.
+    hk(Hotkey::FastForward) = {{key(SDL_SCANCODE_TAB)}, {pad(SDL_GAMEPAD_BUTTON_RIGHT_STICK)}};
+    hk(Hotkey::Rewind) = {{key(SDL_SCANCODE_GRAVE)}, {pad(SDL_GAMEPAD_BUTTON_LEFT_STICK)}};
     return c;
 }
 
@@ -473,6 +483,26 @@ std::uint16_t Manager::poll() const {
     return mask;
 }
 
+bool Manager::hotkey_held(Hotkey h) const {
+    if (h == Hotkey::Count || remapping() || !shortcuts_enabled_) return false;
+    const bool* k = SDL_GetKeyboardState(nullptr);
+    for (const auto& c : config_.hotkeys[int(h)]) {
+        bool all = !c.empty();
+        for (const auto& b : c) {
+            bool down = false;
+            if (b.kind == Binding::Kind::Key) {
+                down = k && b.code >= 0 && b.code < SDL_SCANCODE_COUNT && k[b.code];
+            } else if (b.kind == Binding::Kind::PadButton) {
+                for (auto* p : pads_)
+                    if ((down = SDL_GetGamepadButton(p, SDL_GamepadButton(b.code)))) break;
+            }
+            if (!down) { all = false; break; }
+        }
+        if (all) return true;
+    }
+    return false;
+}
+
 std::uint16_t Manager::poll_frame() { return turbo_.step(poll(), config_.turbo); }
 
 void Manager::start_remap(Button only, Source source) {
@@ -619,7 +649,11 @@ void Manager::fire(Hotkey h) {
         case Hotkey::LoadState: states::quick_load(); break;
         case Hotkey::SlotPrev: states::slot_step(-1); break;
         case Hotkey::SlotNext: states::slot_step(+1); break;
-        default: break;
+        case Hotkey::FastForwardToggle:
+            ff_latched_ = !ff_latched_;
+            message_ = ff_latched_ ? "Fast forward on" : "Fast forward off";
+            break;
+        default: break;  // FastForward and Rewind are read with hotkey_held()
     }
 }
 

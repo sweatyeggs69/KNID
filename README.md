@@ -44,6 +44,7 @@ Get the latest version from the [Releases page](https://github.com/sweatyeggs69/
 - **Save states**: ten slots with thumbnails, quick save/load (to Slot 1 unless you pick another),
   save to a new slot, and
   optional auto-load on launch.
+- **Fast forward and rewind**: hold Tab to speed up (2x or 4x), hold ` to rewind the last 10 seconds. Both rebindable in F1 > Controls; rewind is off in RetroAchievements hardcore mode.
 - **Cheats** (F1 > Cheats): unlimited health and lives, invincibility, and a fixed copy ability. Off in RetroAchievements hardcore mode.
 - **Import saves** from RetroArch, mGBA, VBA-M and others.
 - **RetroAchievements**, optional: sign in to earn achievements.
