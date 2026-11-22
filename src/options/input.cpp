@@ -888,4 +888,10 @@ bool Manager::handle_event(const SDL_Event& e) {
     }
 }
 
+int Manager::rumble(std::uint16_t low, std::uint16_t high, int ms) {
+    int n = 0;
+    for (SDL_Gamepad* p : pads_) n += SDL_RumbleGamepad(p, low, high, Uint32(std::max(ms, 0))) ? 1 : 0;
+    return n;
+}
+
 }  // namespace knid::input

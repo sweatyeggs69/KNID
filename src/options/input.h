@@ -125,6 +125,11 @@ public:
     std::string describe(Hotkey h, Source source = Source::Any) const;  // "Page Up, Back Button + Right Bumper"
     std::string take_message();           // one-shot status text for the on-screen display
     int gamepad_count() const { return int(pads_.size()); }
+    // Rumbles every connected controller that can (motor values 0..0xFFFF, low = the big, slow
+    // motor) for ms milliseconds, replacing whatever was playing. rumble(0, 0, 0) stops it.
+    // Returns how many controllers took it.
+    int rumble(std::uint16_t low, std::uint16_t high, int ms);
+    void stop_rumble() { rumble(0, 0, 0); }
 
 private:
     void save() const;
