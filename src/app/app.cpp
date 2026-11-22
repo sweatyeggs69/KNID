@@ -542,9 +542,10 @@ void App::update_emulation() {
         game_->set_wide_margin(display::wide_margin(presenter_->settings().aspect));
         while (script_pos_ < script_.size() && script_[script_pos_].first <= game_frames_)
             script_keys_ = script_[script_pos_++].second;
-        game_->set_keys(std::uint16_t(controls_->poll_frame() | script_keys_));
+        const std::uint16_t keys = std::uint16_t(controls_->poll_frame() | script_keys_);
+        game_->set_keys(keys);
         game_->run_frame();
-        play_rumble(rumble_watch_.step(game_->iwram(), game_->ewram()));  // before the cheats refill anything
+        play_rumble(rumble_watch_.step(game_->iwram(), game_->ewram(), keys));  // before the cheats refill anything
         if (cheats_allowed()) cheats::apply(game_->ewram_mut(), game_->iwram_mut(), cheat_flags());
         if (achievements_) achievements_->frame(*game_);
         ++game_frames_;
