@@ -8,6 +8,7 @@
 
 #include "app/config.h"
 #include "app/fsutil.h"
+#include "game.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -135,6 +136,13 @@ VerifiedRom verify_rom(const fs::path& path) {
         return v;
     }
     auto loaded = load_rom(v.path);
+    if (!loaded.rom.hash_matches && !loaded.rom.other_release.empty()) {
+        v.error = "That ROM is " + loaded.rom.other_release + " of " + game::kTitle + ".\n"
+                  "KNID only runs the " + game::kRegion + " release [" + game::kGameCode + "] rev " +
+                  std::to_string(game::kRevision) + ".\n"
+                  "SHA-1 " + loaded.rom.file_sha1;
+        return v;
+    }
     if (!loaded.ok) {
         v.error = "That file is not a Game Boy Advance ROM.";
         return v;
@@ -144,7 +152,7 @@ VerifiedRom verify_rom(const fs::path& path) {
         v.error = "That ROM is not the supported dump.\n"
                   "Found: " + h.title + " [" + h.game_code + "] rev " + std::to_string(h.version) + "\n"
                   "Needed: Kirby: Nightmare in Dream Land (USA) [A7KE] rev 0\n"
-                  "SHA-1 " + loaded.rom.sha1;
+                  "SHA-1 " + loaded.rom.file_sha1;
         return v;
     }
     v.rom = std::move(loaded.rom);
