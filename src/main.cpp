@@ -306,9 +306,10 @@ int main(int argc, char** argv) {
     std::printf("ROM: %s [%s] rev %u\nSHA-1: %s (%s)\n", rom.header.title.c_str(),
                 rom.header.game_code.c_str(), rom.header.version, rom.sha1.c_str(),
                 rom.hash_matches ? "verified" : "UNKNOWN DUMP");
+    if (!rom.fixes.empty()) std::printf("Cleaned up the dump: %s.\n", rom.fixes.c_str());
     if (!rom.hash_matches) {
         fail("This ROM is not the expected dump of Kirby: Nightmare in Dream Land (USA).\n"
-             "Expected SHA-1 " + std::string(knid::kExpectedSha1) + "\nGot " + rom.sha1, gui);
+             "Expected SHA-1 " + std::string(knid::kExpectedSha1) + "\nGot " + rom.file_sha1, gui);
         SDL_Quit();
         return 1;
     }
