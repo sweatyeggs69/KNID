@@ -59,33 +59,6 @@ int main() {
     p = w.step(iwram, ram);
     CHECK(p && p.strength() == 1.0f);
 
-    // Power moves: B pressed with Hammer swings, held B does not repeat, no ability does nothing.
-    {
-        constexpr std::uint16_t B = rumble::kKeyB;
-        iwram[iw(cheats::kAbility)] = rumble::kHammer;
-        w.step(iwram, ram, 0);
-        p = w.step(iwram, ram, B);
-        CHECK(p && p.steps[0].low == 0 && p.peak_low() == 1.0f && p.priority < rumble::patterns::kHitPriority);
-        CHECK(!w.step(iwram, ram, B));  // still held
-        w.step(iwram, ram, 0);
-        iwram[iw(cheats::kAbility)] = rumble::kStone;
-        w.step(iwram, ram, 0);
-        p = w.step(iwram, ram, B);
-        CHECK(p && p.peak_low() > 0.5f);
-        w.step(iwram, ram, 0);
-        iwram[iw(cheats::kAbility)] = 0;  // no ability: B inhales, no rumble
-        w.step(iwram, ram, 0);
-        CHECK(!w.step(iwram, ram, B));
-        w.step(iwram, ram, 0);
-        // A hit on the same frame as a swing: the hit wins.
-        iwram[iw(cheats::kAbility)] = rumble::kHammer;
-        w.step(iwram, ram, 0);
-        set16(ram, ew(cheats::kHealth), 0x20);
-        p = w.step(iwram, ram, B);
-        CHECK(p && p.priority >= rumble::patterns::kHitPriority);
-        iwram[iw(cheats::kAbility)] = 0;
-    }
-
     // reset(): a loaded state with less health is not a hit.
     w.reset();
     set16(ram, ew(cheats::kHealth), 0x08);

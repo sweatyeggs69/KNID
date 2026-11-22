@@ -8,8 +8,6 @@
 //     EWRAM 0x02005580, unchanged). Stronger for bigger hits.
 //   - Kirby loses a life: health reaches 0, or the lives count (EWRAM 0x02007D48) drops without
 //     that (a fall into a pit).
-//   - power moves: B pressed with Hammer (a heavy thump timed to the swing), Stone (a heavy drop),
-//     Cutter (a flick) or Beam (a crackle). The copy ability is IWRAM 0x0300217D.
 //
 // Settings (knid::Config): input.rumble (on by default), input.rumble_strength (10-100,
 // default 75).
@@ -30,9 +28,8 @@ inline constexpr int kDefaultStrength = 75;
 inline constexpr int kMinStrength = 10;
 // Shown next to the Controller rumble toggle.
 inline constexpr const char* kEventsHelp =
-    "Shakes your controller when Kirby is hurt, harder for bigger hits, when Kirby loses a "
-    "life, and on power moves: Hammer swings, turning to Stone, Cutter throws and Beam whips. "
-    "Works with controllers that have rumble motors.";
+    "Shakes your controller when Kirby is hurt, harder for bigger hits, and when Kirby loses a "
+    "life. Works with controllers that have rumble motors.";
 
 // ---- Patterns (the same in every port) ----
 //
@@ -231,31 +228,6 @@ inline std::uint16_t get16(std::span<const std::uint8_t> m, std::size_t at) {
 
 // ---- Kirby: Nightmare in Dream Land ----
 
-// Copy ability power moves, played when B is pressed with the ability (IWRAM 0x0300217D, the
-// byte the cheats use) in a level. They follow the button, so a swing that misses still rumbles.
-inline constexpr std::uint16_t kKeyB = 0x0002;
-inline constexpr std::uint8_t kCutter = 0x03, kHammer = 0x09, kBeam = 0x10, kStone = 0x11;
-namespace patterns {
-// The hammer comes down about 6 frames after the press: a short wait, a full thump, a tail.
-inline constexpr Pattern kHammerSwing{kHitPriority - 5, {{0.0f, 0.0f, 100}, {1.0f, 0.5f, 110}, {0.45f, 0.1f, 140}}};
-// Turning to stone: a heavy drop.
-inline constexpr Pattern kStoneDrop{kHitPriority - 5, {{0.85f, 0.35f, 140}, {0.35f, 0.0f, 160}}};
-// Cutter throw: a quick flick on the small motor.
-inline constexpr Pattern kCutterThrow{kTickPriority, {{0.15f, 0.5f, 60}}};
-// Beam whip: a crackle that builds.
-inline constexpr Pattern kBeamWhip{kTickPriority, {{0.0f, 0.35f, 50}, {0.1f, 0.5f, 90}}};
-}  // namespace patterns
-
-inline Pattern ability_move(std::uint8_t ability) {
-    switch (ability) {
-        case kHammer: return patterns::kHammerSwing;
-        case kStone: return patterns::kStoneDrop;
-        case kCutter: return patterns::kCutterThrow;
-        case kBeam: return patterns::kBeamWhip;
-        default: return {};
-    }
-}
-
 class Watcher {
 public:
     // Forgets the last frame, so a jump in the numbers (a loaded state, rewind, a new game) is
@@ -263,8 +235,7 @@ public:
     void reset() { primed_ = false; }
 
     // Call after each emulated frame with the 32 KiB IWRAM (0x03000000) and 256 KiB EWRAM.
-    Pattern step(std::span<const std::uint8_t> iwram, std::span<const std::uint8_t> ewram,
-                 std::uint16_t keys = 0) {
+    Pattern step(std::span<const std::uint8_t> /*iwram*/, std::span<const std::uint8_t> ewram) {
         using detail::get16;
         if (ewram.size() < cheats::kLives - 0x02000000u + 1) return {};
         Frame now;
@@ -272,8 +243,6 @@ public:
         now.max_health = std::int16_t(get16(ewram, cheats::kMaxHealth - 0x02000000u));
         now.lives = ewram[cheats::kLives - 0x02000000u];
         now.in_level = cheats::in_level(ewram);
-        now.ability = iwram.size() > cheats::kAbility - 0x03000000u ? iwram[cheats::kAbility - 0x03000000u] : 0;
-        now.b = (keys & kKeyB) != 0;
 
         const Frame before = last_;
         const bool primed = primed_;
@@ -297,17 +266,14 @@ public:
             out = stronger(out, patterns::kDeath);
             since_death_ = 0;
         }
-        // A power move: B pressed this frame with a copy ability, in a level.
-        if (now.in_level && now.b && !before.b && now.ability == before.ability && now.health > 0)
-            out = stronger(out, ability_move(now.ability));
         return out;
     }
 
 private:
     struct Frame {
         std::int16_t health = 0, max_health = 0;
-        std::uint8_t lives = 0, ability = 0;
-        bool in_level = false, b = false;
+        std::uint8_t lives = 0;
+        bool in_level = false;
     };
     Frame last_;
     bool primed_ = false;
