@@ -3,22 +3,9 @@
   "format": 1,
   "name": "KNID",
   "repo": "sweatyeggs69/KNID",
-  "game": {
-    "kind": "iso",
-    "label": "Your own Game Boy Advance ROM (.gba) of Kirby: Nightmare in Dream Land, USA release (AGB-A7KE), revision 0.",
-    "dumps": [
-      { "name": "USA", "size": 8388608, "crc32": "20EF3F64" }
-    ]
-  },
   "start": {
     "program": ["KNID.exe", "usr/bin/knid", "knid", "AppRun"],
-    "args": ["--game", "{game}"]
-  },
-  "prepare": {
-    "program": ["KNID.exe", "usr/bin/knid", "knid", "AppRun"],
-    "args": ["--prepare", "--game", "{game}"],
-    "label": "Checking your ROM and setting it as KNID's game",
-    "timeout": 60
+    "args": []
   },
   "config": [
     {
@@ -27,8 +14,7 @@
       "file": [
         { "path": "{config}/KNID/KNID/settings.ini", "if": "{config}/Microsoft/Windows" },
         { "path": "{local}/KNID/KNID/settings.ini" }
-      ],
-      "game_path": "rom.path"
+      ]
     }
   ],
   "folders": {
@@ -43,10 +29,6 @@
     "{local}/KNID/KNID/saves",
     "{local}/KNID/KNID/states"
   ],
-  "exit_codes": {
-    "2": "KNID couldn't find your ROM. Pick it again on the game's page.",
-    "3": "That ROM isn't the supported dump. KNID needs Kirby: Nightmare in Dream Land (USA), revision 0."
-  },
   "settings": [
     {
       "id": "window",

@@ -29,6 +29,9 @@ or HAL Laboratory. Kirby and all related names are trademarks of their respectiv
 
 Or get the latest version for your system from the [Releases page](https://github.com/sweatyeggs69/KNID/releases/latest).
 
+RecompLauncher installs and starts KNID, but it does not ask for your ROM. KNID has its
+own setup built in: the first time it opens, pick your ROM as described in Getting started below.
+
 ## Getting started
 
 1. **Open KNID** and click **Choose ROM...** to pick your dump. Only the USA release (game code
