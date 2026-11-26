@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
         }
         progress("0.9", "Saving your ROM choice");
         knid::Config config(opt.pref_dir);
-        config.set_string("rom.path", knid::path_utf8(v.path));
+        config.set_file("rom.path", knid::path_utf8(v.path));
         config.set_string("rom.sha1", v.rom.sha1);
         progress("1", "Ready");
         return 0;
@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
 
     if (!opt.import_save.empty() || !opt.export_save.empty()) {
         knid::Config config(opt.pref_dir);
-        std::filesystem::path rp = !opt.rom.empty() ? opt.rom : knid::utf8_path(config.get_string("rom.path"));
+        std::filesystem::path rp = !opt.rom.empty() ? opt.rom : knid::utf8_path(config.get_file("rom.path"));
         knid::VerifiedRom v = knid::verify_rom(rp);
         if (!v.ok) {
             fail(rp.empty() ? "No ROM is configured; choose it in the launcher first." : v.error, false);
@@ -288,7 +288,7 @@ int main(int argc, char** argv) {
     knid::Config config(opt.pref_dir);
     const char* base = SDL_GetBasePath();
     std::filesystem::path rom_path = !opt.rom.empty() ? opt.rom : knid::find_default_rom(base ? base : ".");
-    if (rom_path.empty()) rom_path = knid::utf8_path(config.get_string("rom.path"));
+    if (rom_path.empty()) rom_path = knid::utf8_path(config.get_file("rom.path"));
     if (rom_path.empty()) {
         fail("No ROM found. Pass the path to your own Kirby: Nightmare in Dream Land dump, "
              "or put the .gba file in a 'rom' folder next to the game.", gui);
